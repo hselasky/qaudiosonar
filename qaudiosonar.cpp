@@ -29,6 +29,15 @@ static pthread_mutex_t atomic_mtx;
 static pthread_mutex_t atomic_gtx;
 static pthread_cond_t atomic_cv;
 
+#define	QAS_STANDARD_AUDIO_BANDS 31
+
+static const double qas_freq_table[2 + QAS_STANDARD_AUDIO_BANDS] = {
+	15, 20, 25, 31.5, 40, 50, 63, 80, 100, 125,
+	160, 200, 250, 315, 400, 500, 630, 800, 1000,
+	1250, 1600, 2000, 2500, 3150, 4000, 5000,
+	6300, 8000, 10000, 12500, 16000, 20000, 24000,
+};
+
 static void
 atomic_init(void)
 {
@@ -253,7 +262,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setFont(fnt);
 	paint.setPen(QPen(grey,0));
 	paint.setBrush(grey);
-	paint.drawText(QPoint(xv+8,h-8),str);
+	paint.drawText(QPoint(xv+8+xs,h-8),str);
 }
 
 void
@@ -357,22 +366,30 @@ QasMainWindow :: handle_sync()
 void
 QasMainWindow :: handle_logarithmic()
 {
-	qas_logarithmic = !qas_logarithmic;
+	if (qas_logarithmic == 0)
+		qas_logarithmic = 1;
+	else if (qas_logarithmic == 1)
+		qas_logarithmic = 0;
 }
 
 void
 QasMainWindow :: set_filter(int value)
 {
-	double range = qas_sample_rate / 2.0;
-	double step = range / qas_bands;
 	qas_filter *f;
 
-	if (qas_logarithmic) {
+	if (qas_logarithmic == 2) {
+		double step = (qas_freq_table[value + 2] - qas_freq_table[value]) / 2.0;
+		double cf = qas_freq_table[value + 1];
+		f = new qas_filter(QAS_WINDOW_SIZE, value, cf - step, cf + step);
+	} else if (qas_logarithmic == 1) {
+		double range = qas_sample_rate / 2.0;
+		double step = range / qas_bands;
 		double pf = pow((range - step) / step, 1.0 / qas_bands);
 		double cf = step * pow(pf, value);
-
 		f = new qas_filter(QAS_WINDOW_SIZE, value, cf, cf + step);
 	} else {
+		double range = qas_sample_rate / 2.0;
+		double step = range / qas_bands;
 		f = new qas_filter(QAS_WINDOW_SIZE, value,
 		    value * step, (value + 1) * step);
 	}
@@ -382,15 +399,19 @@ QasMainWindow :: set_filter(int value)
 double
 QasMainWindow :: get_freq(int value)
 {
-	double range = qas_sample_rate / 2.0;
-	double step = range / qas_bands;
-
-	if (qas_logarithmic) {
+	if (qas_logarithmic == 2) {
+		double step = (qas_freq_table[value + 2] - qas_freq_table[value]) / 2.0;
+		double cf = qas_freq_table[value + 1];
+		return (cf);
+	} else if (qas_logarithmic == 1) {
+		double range = qas_sample_rate / 2.0;
+		double step = range / qas_bands;
 		double pf = pow((range - step) / step, 1.0 / qas_bands);
 		double cf = step * pow(pf, value);
-
 		return (cf + step / 2.0);
 	} else {
+		double range = qas_sample_rate / 2.0;
+		double step = range / qas_bands;
 		return (value * step + step / 2.0);
 	}
 }
@@ -437,7 +458,7 @@ QasMainWindow :: handle_sweep_timer()
 static void
 usage(void)
 {
-	fprintf(stderr, "Usage: qaudiosonar [-r <samplerate>] [-b <bands>] [-l]\n");
+	fprintf(stderr, "Usage: qaudiosonar [-r <samplerate>] [-b <bands>] [-l <n>]\n");
 	exit(0);
 }
 
@@ -447,7 +468,7 @@ main(int argc, char **argv)
 	QApplication app(argc, argv);
 	int c;
 
-	while ((c = getopt(argc, argv, "b:lr:h")) != -1) {
+	while ((c = getopt(argc, argv, "b:l:r:h")) != -1) {
 		switch (c) {
 		case 'b':
 			qas_bands = atoi(optarg);
@@ -460,12 +481,21 @@ main(int argc, char **argv)
 				qas_sample_rate = 1;
 			break;
 		case 'l':
-			qas_logarithmic = 1;
+			qas_logarithmic = atoi(optarg);
 			break;
 		default:
 			usage();
 			break;
 		}
+	}
+
+	if (qas_logarithmic == 2) {
+		unsigned x;
+		for (x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++) {
+			if (qas_freq_table[x] > (qas_sample_rate / 2.0))
+				break;
+		}
+		qas_bands = x;
 	}
 
 	qas_max_data = (int64_t *)calloc(1,
