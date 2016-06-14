@@ -66,7 +66,7 @@ class QasMainWindow;
 
 class qas_filter {
 public:
-	qas_filter(unsigned filter_size, unsigned which, double low_hz, double high_hz);
+	qas_filter(unsigned filter_size, unsigned which, double amp, double low_hz, double high_hz);
 	~qas_filter() { };
 	qas_filter_entry_t entry;
 	double prescaler;

@@ -109,7 +109,7 @@ fet_prescaler_s64(int64_t *filter)
 	return (prescaler);
 }
 
-qas_filter :: qas_filter(unsigned filter_size, unsigned which, double low, double high)
+qas_filter :: qas_filter(unsigned filter_size, unsigned which, double amp, double low, double high)
   : which(which)
 {
 	if (which >= qas_bands)
@@ -122,7 +122,7 @@ qas_filter :: qas_filter(unsigned filter_size, unsigned which, double low, doubl
 
 	memset(filter_lin, 0, sizeof(filter_lin));
 
-	qas_band_pass(low, high, 1.0, filter_lin, filter_size);
+	qas_band_pass(low, high, amp, filter_lin, filter_size);
 
 	prescaler = fet_prescaler_double(filter_lin);
 

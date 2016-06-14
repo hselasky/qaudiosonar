@@ -378,18 +378,20 @@ QasMainWindow :: set_filter(int value)
 	qas_filter *f;
 
 	if (qas_logarithmic == 2) {
-		f = new qas_filter(QAS_WINDOW_SIZE, value,
-		    qas_freq_table[value], qas_freq_table[value + 2]);
+		double max_width = (qas_freq_table[qas_bands + 1] - qas_freq_table[qas_bands - 1]) / 4.0;
+		double width = (qas_freq_table[value + 2] - qas_freq_table[value]) / 4.0;
+		double cf = qas_freq_table[value + 1];
+		f = new qas_filter(QAS_WINDOW_SIZE, value, sqrt(max_width / width), cf - width, cf + width);
 	} else if (qas_logarithmic == 1) {
 		double range = qas_sample_rate / 2.0;
 		double step = range / qas_bands;
 		double pf = pow((range - step) / step, 1.0 / qas_bands);
 		double cf = step * pow(pf, value);
-		f = new qas_filter(QAS_WINDOW_SIZE, value, cf, cf + step);
+		f = new qas_filter(QAS_WINDOW_SIZE, value, 1.0, cf, cf + step);
 	} else {
 		double range = qas_sample_rate / 2.0;
 		double step = range / qas_bands;
-		f = new qas_filter(QAS_WINDOW_SIZE, value,
+		f = new qas_filter(QAS_WINDOW_SIZE, value, 1.0,
 		    value * step, (value + 1) * step);
 	}
 	qas_queue_filter(f);
