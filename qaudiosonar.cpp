@@ -35,7 +35,7 @@ static const double qas_freq_table[2 + QAS_STANDARD_AUDIO_BANDS] = {
 	15, 20, 25, 31.5, 40, 50, 63, 80, 100, 125,
 	160, 200, 250, 315, 400, 500, 630, 800, 1000,
 	1250, 1600, 2000, 2500, 3150, 4000, 5000,
-	6300, 8000, 10000, 12500, 16000, 20000, 24000,
+	6300, 8000, 10000, 12500, 16000, 20000, 23500,
 };
 
 static void
@@ -378,9 +378,8 @@ QasMainWindow :: set_filter(int value)
 	qas_filter *f;
 
 	if (qas_logarithmic == 2) {
-		double step = (qas_freq_table[value + 2] - qas_freq_table[value]) / 2.0;
-		double cf = qas_freq_table[value + 1];
-		f = new qas_filter(QAS_WINDOW_SIZE, value, cf - step, cf + step);
+		f = new qas_filter(QAS_WINDOW_SIZE, value,
+		    qas_freq_table[value], qas_freq_table[value + 2]);
 	} else if (qas_logarithmic == 1) {
 		double range = qas_sample_rate / 2.0;
 		double step = range / qas_bands;
@@ -400,9 +399,7 @@ double
 QasMainWindow :: get_freq(int value)
 {
 	if (qas_logarithmic == 2) {
-		double step = (qas_freq_table[value + 2] - qas_freq_table[value]) / 2.0;
-		double cf = qas_freq_table[value + 1];
-		return (cf);
+		return (qas_freq_table[value + 1]);
 	} else if (qas_logarithmic == 1) {
 		double range = qas_sample_rate / 2.0;
 		double step = range / qas_bands;
@@ -492,7 +489,7 @@ main(int argc, char **argv)
 	if (qas_logarithmic == 2) {
 		unsigned x;
 		for (x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++) {
-			if (qas_freq_table[x] > (qas_sample_rate / 2.0))
+			if (qas_freq_table[x + 2] >= (qas_sample_rate / 2.0))
 				break;
 		}
 		qas_bands = x;
