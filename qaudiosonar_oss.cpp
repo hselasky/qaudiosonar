@@ -34,9 +34,9 @@ char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
 int64_t *qas_max_data;
 int64_t *qas_phase_data;
-unsigned qas_bands = 512;
+unsigned qas_bands = 31;
 unsigned qas_which;
-unsigned qas_logarithmic = 1;
+unsigned qas_logarithmic = 2;
 double qas_freq;
 
 void

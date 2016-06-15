@@ -237,9 +237,13 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	QPainter paint(this);
 	int w = width();
 	int h = height();
+	double amp;
+	double low;
+	double high;
 
 	QColor white(255,255,255);
 	QColor grey(127,127,127);
+	QColor black(0,0,0);
 
 	paint.setPen(QPen(white,0));
 	paint.setBrush(white);
@@ -256,13 +260,24 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	drawGraph(paint, qas_max_data, 0, h / 3, w, h / 3, qas_bands, TYPE_AMP);
 	drawGraph(paint, qas_phase_data, 0, 2 * h / 3, w, h / 3, qas_bands, TYPE_PHASE);
 
+	unsigned x;
 	QFont fnt = paint.font();
-	QString str = QString("%1Hz").arg((int)mw->get_freq(mw->sb->value()));
+	QString str;
+
 	fnt.setPixelSize(16);
 	paint.setFont(fnt);
-	paint.setPen(QPen(grey,0));
-	paint.setBrush(grey);
-	paint.drawText(QPoint(xv+8+xs,h-8),str);
+	paint.setPen(QPen(black,0));
+	paint.setBrush(black);
+
+	paint.rotate(-90);
+
+	for (x = 0; x != qas_bands; x++) {
+		mw->get_filter(x, &amp, &low, &high);
+		str = QString("%1 Hz").arg((int)((high + low)/2.0));
+		paint.drawText(QPoint(-h, xs * x + 8 + xs / 2.0), str);
+		paint.drawRect(QRectF(-h, xs * x, 16, 2));
+	}
+	paint.rotate(90);
 }
 
 void
@@ -366,53 +381,74 @@ QasMainWindow :: handle_sync()
 void
 QasMainWindow :: handle_logarithmic()
 {
-	if (qas_logarithmic == 0)
-		qas_logarithmic = 1;
-	else if (qas_logarithmic == 1)
-		qas_logarithmic = 0;
+	qas_logarithmic++;
+	qas_logarithmic %= 3;
+}
+
+void
+QasMainWindow :: get_filter(int value, double *pamp, double *plow, double *phigh)
+{
+	unsigned max_bands;
+	double max_width;
+	double width;
+	double range;
+	double step;
+	double pf;
+	double cf;
+
+	switch (qas_logarithmic) {
+	case 2:
+		for (max_bands = 0; max_bands != QAS_STANDARD_AUDIO_BANDS; max_bands++) {
+			if (qas_freq_table[max_bands + 2] >= (qas_sample_rate / 2.0))
+				break;
+		}
+		value = (max_bands * value) / qas_bands;
+
+		max_width = (qas_freq_table[qas_bands + 1] - qas_freq_table[qas_bands - 1]) / 4.0;
+		width = (qas_freq_table[value + 2] - qas_freq_table[value]) / 4.0;
+		cf = qas_freq_table[value + 1];
+
+		*pamp = sqrt(max_width / width);
+		*plow = cf - width;
+		*phigh = cf + width;
+		break;
+
+	case 1:
+		range = qas_sample_rate / 2.0;
+		step = range / qas_bands;
+		pf = pow((range - step) / step, 1.0 / qas_bands);
+		max_width = (range - step) * (1.0 - (1.0 / pf)) / 2.0;
+		width = step * (pow(pf, value + 1) - pow(pf, value)) / 2.0;
+		cf = step * pow(pf, value);
+
+		*pamp = sqrt(max_width / width);
+		*plow = cf - width;
+		*phigh = cf + width;
+		break;
+
+	default:
+		range = (qas_sample_rate / 2.0);
+		step = range / (qas_bands + 3);
+
+		*pamp = 1.0;
+		*plow = step * (value + 1);
+		*phigh = step * (value + 2);
+		break;
+	}
 }
 
 void
 QasMainWindow :: set_filter(int value)
 {
 	qas_filter *f;
+	double amp;
+	double low;
+	double high;
 
-	if (qas_logarithmic == 2) {
-		double max_width = (qas_freq_table[qas_bands + 1] - qas_freq_table[qas_bands - 1]) / 4.0;
-		double width = (qas_freq_table[value + 2] - qas_freq_table[value]) / 4.0;
-		double cf = qas_freq_table[value + 1];
-		f = new qas_filter(QAS_WINDOW_SIZE, value, sqrt(max_width / width), cf - width, cf + width);
-	} else if (qas_logarithmic == 1) {
-		double range = qas_sample_rate / 2.0;
-		double step = range / qas_bands;
-		double pf = pow((range - step) / step, 1.0 / qas_bands);
-		double cf = step * pow(pf, value);
-		f = new qas_filter(QAS_WINDOW_SIZE, value, 1.0, cf, cf + step);
-	} else {
-		double range = qas_sample_rate / 2.0;
-		double step = range / qas_bands;
-		f = new qas_filter(QAS_WINDOW_SIZE, value, 1.0,
-		    value * step, (value + 1) * step);
-	}
+	get_filter(value, &amp, &low, &high);
+
+	f = new qas_filter(QAS_WINDOW_SIZE, value, amp, low, high);
 	qas_queue_filter(f);
-}
-
-double
-QasMainWindow :: get_freq(int value)
-{
-	if (qas_logarithmic == 2) {
-		return (qas_freq_table[value + 1]);
-	} else if (qas_logarithmic == 1) {
-		double range = qas_sample_rate / 2.0;
-		double step = range / qas_bands;
-		double pf = pow((range - step) / step, 1.0 / qas_bands);
-		double cf = step * pow(pf, value);
-		return (cf + step / 2.0);
-	} else {
-		double range = qas_sample_rate / 2.0;
-		double step = range / qas_bands;
-		return (value * step + step / 2.0);
-	}
 }
 
 void
@@ -486,15 +522,6 @@ main(int argc, char **argv)
 			usage();
 			break;
 		}
-	}
-
-	if (qas_logarithmic == 2) {
-		unsigned x;
-		for (x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++) {
-			if (qas_freq_table[x + 2] >= (qas_sample_rate / 2.0))
-				break;
-		}
-		qas_bands = x;
 	}
 
 	qas_max_data = (int64_t *)calloc(1,

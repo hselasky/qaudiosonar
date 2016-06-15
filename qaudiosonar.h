@@ -94,8 +94,8 @@ class QasMainWindow : public QWidget {
 public:
 	QasMainWindow();
 	~QasMainWindow() { };
+	void get_filter(int, double *, double *, double *);
 	void set_filter(int);
-	double get_freq(int);
 
 	QGridLayout *gl;
 	QScrollBar *sb;
