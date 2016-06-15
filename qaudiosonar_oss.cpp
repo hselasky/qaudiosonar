@@ -37,6 +37,7 @@ int64_t *qas_phase_data;
 unsigned qas_bands = 31;
 unsigned qas_which;
 unsigned qas_logarithmic = 2;
+unsigned qas_graph_count;
 double qas_freq;
 
 void
@@ -142,15 +143,13 @@ qas_dsp_audio_producer(void *arg)
 		while (dsp_write_monitor_space(&qas_write_buffer) < QAS_WINDOW_SIZE)
 			atomic_wait();
 
-		if (curr != NULL) {
-			qas_which = curr->which;
-			qas_freq = curr->freq;
-		}
-
 		if (curr == NULL) {
 			curr = TAILQ_FIRST(&qas_filter_head);
 			if (curr != NULL) {
 				TAILQ_REMOVE(&qas_filter_head, curr, entry);
+				qas_graph_count = 0;
+				qas_which = curr->which;
+				qas_freq = curr->freq;
 			}
 		}
 		if (next == NULL) {
@@ -226,6 +225,9 @@ qas_dsp_audio_producer(void *arg)
 			delete curr;
 			curr = next;
 			next = NULL;
+			qas_graph_count = 0;
+			qas_which = curr->which;
+			qas_freq = curr->freq;
 		}
 	}
 	atomic_unlock();
@@ -246,7 +248,7 @@ qas_dsp_sync(void)
 		dsp_get_sample(&qas_read_buffer);
 	memset(qas_phase_data, 0, sizeof(qas_phase_data[0])*qas_bands);
 	memset(qas_max_data, 0, sizeof(qas_max_data[0])*qas_bands);
-	memset(qas_graph_data, 0, sizeof(qas_graph_data));
+	qas_graph_count = 0;
 	atomic_wakeup();
 	atomic_unlock();
 	atomic_graph_unlock();
@@ -284,9 +286,12 @@ qas_dsp_audio_analyzer(void *arg)
 		atomic_unlock();
 
 		atomic_graph_lock();
+		atomic_lock();
+		int do_zero = (qas_graph_count == 0);
+		atomic_unlock();
 
-		for (x = 0; x != QAS_MON_SIZE; x++)
-			qas_graph_data[x] *= 0.95;
+		if (do_zero)
+			memset(qas_graph_data, 0, sizeof(qas_graph_data));
 
 		for (y = 0; y <= (QAS_MON_SIZE - QAS_FET_SIZE + QAS_WINDOW_SIZE);
 		     y += (QAS_FET_SIZE - QAS_WINDOW_SIZE)) {
@@ -320,7 +325,8 @@ qas_dsp_audio_analyzer(void *arg)
 				y = x;
 		}
 		atomic_lock();
-		qas_max_data[qas_which] = qas_graph_data[y];
+		qas_graph_count++;
+		qas_max_data[qas_which] = qas_graph_data[y] / qas_graph_count;
 		qas_phase_data[qas_which] = y;
 		atomic_unlock();
 

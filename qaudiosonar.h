@@ -110,6 +110,8 @@ public slots:
 	void handle_sync();
 	void handle_logarithmic();
 	void handle_slider(int);
+	void handle_step_up();
+	void handle_step_down();
 	void handle_sweep_up();
 	void handle_sweep_lock();
 	void handle_sweep_down();
@@ -135,6 +137,7 @@ extern int64_t *qas_phase_data;
 extern unsigned qas_logarithmic;
 extern unsigned qas_bands;
 extern unsigned qas_which;
+extern unsigned qas_graph_count;
 extern double qas_freq;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);

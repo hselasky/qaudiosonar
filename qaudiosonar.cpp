@@ -102,6 +102,7 @@ drawGraph(QPainter &paint, const int64_t *graph,
     int x_off, int y_off, int w, int h, unsigned num, unsigned type)
 {
 	int64_t temp[num];
+	double gain;
 	unsigned x;
 	unsigned y;
 	unsigned z;
@@ -112,11 +113,18 @@ drawGraph(QPainter &paint, const int64_t *graph,
 
 	atomic_graph_lock();
 	memcpy(temp, graph, sizeof(temp));
+	if (type == TYPE_CORR && qas_graph_count != 0)
+		gain = 1.0 / qas_graph_count;
+	else
+		gain = 1.0;
 	atomic_graph_unlock();
 
 	atomic_lock();
 	int64_t freq = qas_freq;
 	atomic_unlock();
+
+	for (x = 0; x != num; x++)
+		temp[x] *= gain;
 
 	double f = 1000.0 / log(10);
 
@@ -326,23 +334,31 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_down()));
 	gl->addWidget(pb, 1,2,1,1);
 
-	pb = new QPushButton(tr("SweepLock"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_lock()));
+	pb = new QPushButton(tr("--"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_step_down()));
 	gl->addWidget(pb, 1,3,1,1);
 
-	pb = new QPushButton(tr(">>"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_up()));
+	pb = new QPushButton(tr("SweepLock"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_lock()));
 	gl->addWidget(pb, 1,4,1,1);
 
-	gl->addWidget(sb, 3,0,1,5);
-	gl->addWidget(qg, 2,0,1,5);
+	pb = new QPushButton(tr("++"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_step_up()));
+	gl->addWidget(pb, 1,5,1,1);
+	
+	pb = new QPushButton(tr(">>"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_up()));
+	gl->addWidget(pb, 1,6,1,1);
+
+	gl->addWidget(sb, 3,0,1,7);
+	gl->addWidget(qg, 2,0,1,7);
 
 	gl->setRowStretch(1,1);
 
 	qas_sweeping = 0;
 	sweep_timer = new QTimer(this);
 	connect(sweep_timer, SIGNAL(timeout()), this, SLOT(handle_sweep_timer()));
-	sweep_timer->start(1000);
+	sweep_timer->start(16000);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.0"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -449,6 +465,22 @@ QasMainWindow :: set_filter(int value)
 
 	f = new qas_filter(QAS_WINDOW_SIZE, value, amp, low, high);
 	qas_queue_filter(f);
+}
+
+void
+QasMainWindow :: handle_step_up()
+{
+	qas_sweeping = 0;
+	sb->setValue(sb->value() + 1);
+	set_filter(sb->value());
+}
+
+void
+QasMainWindow :: handle_step_down()
+{
+	qas_sweeping = 0;
+	sb->setValue(sb->value() - 1);
+	set_filter(sb->value());
 }
 
 void
