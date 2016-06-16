@@ -26,7 +26,8 @@
 #include "qaudiosonar.h"
 
 static pthread_mutex_t atomic_mtx;
-static pthread_mutex_t atomic_gtx;
+static pthread_mutex_t atomic_graph;
+static pthread_mutex_t atomic_filter;
 static pthread_cond_t atomic_cv;
 
 #define	QAS_STANDARD_AUDIO_BANDS 31
@@ -42,7 +43,8 @@ static void
 atomic_init(void)
 {
 	pthread_mutex_init(&atomic_mtx, NULL);
-	pthread_mutex_init(&atomic_gtx, NULL);
+	pthread_mutex_init(&atomic_graph, NULL);
+	pthread_mutex_init(&atomic_filter, NULL);
 	pthread_cond_init(&atomic_cv, NULL);
 }
 
@@ -61,13 +63,25 @@ atomic_unlock(void)
 void
 atomic_graph_lock(void)
 {
-	pthread_mutex_lock(&atomic_gtx);
+	pthread_mutex_lock(&atomic_graph);
 }
 
 void
 atomic_graph_unlock(void)
 {
-	pthread_mutex_unlock(&atomic_gtx);
+	pthread_mutex_unlock(&atomic_graph);
+}
+
+void
+atomic_filter_lock(void)
+{
+	pthread_mutex_lock(&atomic_filter);
+}
+
+void
+atomic_filter_unlock(void)
+{
+	pthread_mutex_unlock(&atomic_filter);
 }
 
 void
@@ -94,15 +108,12 @@ QasGraph :: QasGraph(QasMainWindow *_mw)
 enum {
 	TYPE_CORR,
 	TYPE_AMP,
-	TYPE_PHASE,
 };
 
 static void
-drawGraph(QPainter &paint, const int64_t *graph,
+drawGraph(QPainter &paint, int64_t *temp,
     int x_off, int y_off, int w, int h, unsigned num, unsigned type)
 {
-	int64_t temp[num];
-	double gain;
 	unsigned x;
 	unsigned y;
 	unsigned z;
@@ -110,21 +121,6 @@ drawGraph(QPainter &paint, const int64_t *graph,
 	QColor red(255,64,64);
 	QColor avg(192,32,32);
 	QColor black(0,0,0);
-
-	atomic_graph_lock();
-	memcpy(temp, graph, sizeof(temp));
-	if (type == TYPE_CORR && qas_graph_count != 0)
-		gain = 1.0 / qas_graph_count;
-	else
-		gain = 1.0;
-	atomic_graph_unlock();
-
-	atomic_lock();
-	int64_t freq = qas_freq;
-	atomic_unlock();
-
-	for (x = 0; x != num; x++)
-		temp[x] *= gain;
 
 	double f = 1000.0 / log(10);
 
@@ -193,7 +189,6 @@ drawGraph(QPainter &paint, const int64_t *graph,
 		int64_t a = temp[x] - zero;
 		switch (type) {
 		case TYPE_AMP:
-		case TYPE_PHASE:
 			if (temp[x] == 0)
 				a = 0;
 			break;
@@ -217,16 +212,12 @@ drawGraph(QPainter &paint, const int64_t *graph,
 	QString str;
 	switch (type) {
 	case TYPE_CORR:
-		str = QString("CORRELATION MAX=%1dB@%2 FREQ=%3Hz")
-		  .arg(log(max) * f / 100.0).arg(y).arg(freq);
+		str = QString("CORRELATION MAX=%1dB@%2")
+		  .arg(log(max) * f / 100.0).arg(y);
 		break;
 	case TYPE_AMP:
 		str = QString("AMPLITUDE MAX=%1dB MIN=%2dB")
 		  .arg(max / 100.0).arg(min / 100.0);
-		break;
-	case TYPE_PHASE:
-		str = QString("PHASE MAX=%1 MIN=%2 DELTA=%3=%4s")
-		  .arg(max).arg(min).arg(max-min).arg((max-min)/(double)qas_sample_rate);
 		break;
 	default:
 		break;
@@ -245,9 +236,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	QPainter paint(this);
 	int w = width();
 	int h = height();
-	double amp;
-	double low;
-	double high;
 
 	QColor white(255,255,255);
 	QColor grey(127,127,127);
@@ -257,18 +245,40 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setBrush(white);
 	paint.drawRect(QRectF(0,0,w,h));
 
-	double xs = w / (double)qas_bands;
+	atomic_filter_lock();
+	unsigned num;
+	qas_block_filter *f;
+	num = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		num++;
+
+	double freq[num];
+	int64_t power[num];
+
+	num = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry) {
+		freq[num] = f->freq;
+		power[num] = f->power;
+		num++;
+	}
+	atomic_filter_unlock();
+
+	int64_t corr[QAS_MON_SIZE];
+
+	atomic_graph_lock();
+	memcpy(corr, qas_graph_data, sizeof(corr));
+	atomic_graph_unlock();
+
+	double xs = w / (double)num;
 	double xv = mw->sb->value() * xs;
 
 	paint.setPen(QPen(grey,0));
 	paint.setBrush(grey);
 	paint.drawRect(QRectF(xv,0,xs,h));
 
-	drawGraph(paint, qas_graph_data, 0, 0, w, h / 3, QAS_MON_SIZE, TYPE_CORR);
-	drawGraph(paint, qas_max_data, 0, h / 3, w, h / 3, qas_bands, TYPE_AMP);
-	drawGraph(paint, qas_phase_data, 0, 2 * h / 3, w, h / 3, qas_bands, TYPE_PHASE);
+	drawGraph(paint, corr, 0, 0, w, h / 2, QAS_MON_SIZE, TYPE_CORR);
+	drawGraph(paint, power, 0, h / 2, w, h / 2, num, TYPE_AMP);
 
-	unsigned x;
 	QFont fnt = paint.font();
 	QString str;
 
@@ -279,12 +289,12 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	paint.rotate(-90);
 
-	for (x = 0; x != qas_bands; x++) {
-		mw->get_filter(x, &amp, &low, &high);
-		str = QString("%1 Hz").arg((int)((high + low)/2.0));
+	for (unsigned x = 0; x != num; x++) {
+		str = QString("%1 Hz").arg((double)(int)(2.0 * freq[x]) / 2.0);
 		paint.drawText(QPoint(-h, xs * x + 8 + xs / 2.0), str);
 		paint.drawRect(QRectF(-h, xs * x, 16, 2));
 	}
+
 	paint.rotate(90);
 }
 
@@ -303,9 +313,9 @@ QasMainWindow :: QasMainWindow()
 	qg = new QasGraph(this);
 
 	sb = new QScrollBar(Qt::Horizontal);
-	sb->setRange(0, qas_bands - 1);
+	sb->setRange(0, 0);
 	sb->setSingleStep(1);
-	sb->setValue(1);
+	sb->setValue(0);
 	connect(sb, SIGNAL(valueChanged(int)), this, SLOT(handle_slider(int)));
 
 	gl->addWidget(new QLabel(tr("DSP RX:")), 0,0,1,1);
@@ -323,42 +333,35 @@ QasMainWindow :: QasMainWindow()
 	gl->addWidget(pb, 0,2,1,1);
 
 	pb = new QPushButton(tr("Reset"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sync()));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_reset()));
 	gl->addWidget(pb, 0,3,1,1);
 
-	pb = new QPushButton(tr("LogTog"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_logarithmic()));
+	spn = new QSpinBox();
+	spn->setRange(1,1024);
+	spn->setSuffix(tr(" bands"));
+	spn->setValue(32);
+	gl->addWidget(spn, 1,2,1,1);
+	
+	pb = new QPushButton(tr("AddISO"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_add_iso()));
 	gl->addWidget(pb, 0,4,1,1);
 
-	pb = new QPushButton(tr("<<"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_down()));
-	gl->addWidget(pb, 1,2,1,1);
+	pb = new QPushButton(tr("AddLog"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_add_log()));
+	gl->addWidget(pb, 0,5,1,1);
 
-	pb = new QPushButton(tr("--"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_step_down()));
+	pb = new QPushButton(tr("AddLin"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_add_lin()));
+	gl->addWidget(pb, 0,6,1,1);
+
+	pb = new QPushButton(tr("DelAll"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_del_all()));
 	gl->addWidget(pb, 1,3,1,1);
-
-	pb = new QPushButton(tr("SweepLock"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_lock()));
-	gl->addWidget(pb, 1,4,1,1);
-
-	pb = new QPushButton(tr("++"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_step_up()));
-	gl->addWidget(pb, 1,5,1,1);
-	
-	pb = new QPushButton(tr(">>"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_sweep_up()));
-	gl->addWidget(pb, 1,6,1,1);
 
 	gl->addWidget(sb, 3,0,1,7);
 	gl->addWidget(qg, 2,0,1,7);
 
 	gl->setRowStretch(1,1);
-
-	qas_sweeping = 0;
-	sweep_timer = new QTimer(this);
-	connect(sweep_timer, SIGNAL(timeout()), this, SLOT(handle_sweep_timer()));
-	sweep_timer->start(16000);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.0"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -388,138 +391,114 @@ QasMainWindow :: handle_apply()
 }
 
 void
-QasMainWindow :: handle_sync()
+QasMainWindow :: handle_reset()
 {
-	qas_sweeping = 0;
 	qas_dsp_sync();
 }
 
 void
-QasMainWindow :: handle_logarithmic()
+QasMainWindow :: update_sb()
 {
-	qas_logarithmic++;
-	qas_logarithmic %= 3;
+	qas_block_filter *f;
+	int num = 0;
+
+	atomic_filter_lock();
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		num++;
+	atomic_filter_unlock();
+
+	sb->setRange(0,num ? num - 1 : num);
 }
 
 void
-QasMainWindow :: get_filter(int value, double *pamp, double *plow, double *phigh)
+QasMainWindow :: handle_add_iso()
 {
-	unsigned max_bands;
+	qas_block_filter *f;
 	double max_width;
 	double width;
-	double range;
-	double step;
-	double pf;
 	double cf;
 
-	switch (qas_logarithmic) {
-	case 2:
-		for (max_bands = 0; max_bands != QAS_STANDARD_AUDIO_BANDS; max_bands++) {
-			if (qas_freq_table[max_bands + 2] >= (qas_sample_rate / 2.0))
-				break;
-		}
-		value = (max_bands * value) / qas_bands;
+	max_width = (qas_freq_table[QAS_STANDARD_AUDIO_BANDS + 1] -
+		     qas_freq_table[QAS_STANDARD_AUDIO_BANDS - 1]) / 4.0;
 
-		max_width = (qas_freq_table[qas_bands + 1] - qas_freq_table[qas_bands - 1]) / 4.0;
-		width = (qas_freq_table[value + 2] - qas_freq_table[value]) / 4.0;
-		cf = qas_freq_table[value + 1];
+	for (unsigned x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++) {
+		if (qas_freq_table[x + 2] >= (qas_sample_rate / 2.0))
+			break;
+		width = (qas_freq_table[x + 2] - qas_freq_table[x]) / 4.0;
+		cf = qas_freq_table[x + 1];
 
-		*pamp = sqrt(max_width / width);
-		*plow = cf - width;
-		*phigh = cf + width;
-		break;
+		f = new qas_block_filter(sqrt(max_width / width), cf - width, cf + width);
 
-	case 1:
-		range = qas_sample_rate / 2.0;
-		step = range / qas_bands;
-		pf = pow((range - step) / step, 1.0 / qas_bands);
-		max_width = (range - step) * (1.0 - (1.0 / pf)) / 2.0;
-		width = step * (pow(pf, value + 1) - pow(pf, value)) / 2.0;
-		cf = step * pow(pf, value);
-
-		*pamp = sqrt(max_width / width);
-		*plow = cf - width;
-		*phigh = cf + width;
-		break;
-
-	default:
-		range = (qas_sample_rate / 2.0);
-		step = range / (qas_bands + 3);
-
-		*pamp = 1.0;
-		*plow = step * (value + 1);
-		*phigh = step * (value + 2);
-		break;
+		qas_queue_block_filter(f, &qas_filter_head);
 	}
+	update_sb();
 }
 
 void
-QasMainWindow :: set_filter(int value)
+QasMainWindow :: handle_add_log()
 {
-	qas_filter *f;
-	double amp;
-	double low;
-	double high;
+	qas_block_filter *f;
+	unsigned max_bands = spn->value();
+	double max_width;
+	double range;
+	double width;
+	double step;
+	double cf;
+	double pf;
 
-	get_filter(value, &amp, &low, &high);
+	for (unsigned x = 0; x != max_bands; x++) {
+		range = qas_sample_rate / 2.0;
+		step = range / max_bands;
+		pf = pow((range - step) / step, 1.0 / max_bands);
+		max_width = (range - step) * (1.0 - (1.0 / pf)) / 2.0;
+		width = step * (pow(pf, x + 1) - pow(pf, x)) / 2.0;
+		cf = step * pow(pf, x);
 
-	f = new qas_filter(QAS_WINDOW_SIZE, value, amp, low, high);
-	qas_queue_filter(f);
+		f = new qas_block_filter(sqrt(max_width / width), cf - width, cf + width);
+
+		qas_queue_block_filter(f, &qas_filter_head);
+	}
+	update_sb();
 }
 
 void
-QasMainWindow :: handle_step_up()
+QasMainWindow :: handle_add_lin()
 {
-	qas_sweeping = 0;
-	sb->setValue(sb->value() + 1);
-	set_filter(sb->value());
-}
+	qas_block_filter *f;
+	unsigned max_bands = spn->value();
+	double range;
+	double step;
 
-void
-QasMainWindow :: handle_step_down()
-{
-	qas_sweeping = 0;
-	sb->setValue(sb->value() - 1);
-	set_filter(sb->value());
+	for (unsigned x = 0; x != max_bands; x++) {
+
+		range = qas_sample_rate / 2.0;
+		step = range / (max_bands + 3);
+
+		f = new qas_block_filter(1.0, step * (x + 1), step * (x + 2));
+
+		qas_queue_block_filter(f, &qas_filter_head);
+	}
+	update_sb();
 }
 
 void
 QasMainWindow :: handle_slider(int value)
 {
-	if (qas_sweeping == 0)
-		return;
-	set_filter(value);
 }
 
 void
-QasMainWindow :: handle_sweep_up()
+QasMainWindow :: handle_del_all()
 {
-	qas_sweeping = 1;
-}
+  	qas_block_filter *f;
 
-void
-QasMainWindow :: handle_sweep_lock()
-{
-	qas_sweeping = 0;
-	set_filter(sb->value());
-}
+	atomic_filter_lock();
+	while ((f = TAILQ_FIRST(&qas_filter_head))) {
+		TAILQ_REMOVE(&qas_filter_head, f, entry);
+		delete f;
+	}
+	atomic_filter_unlock();
 
-void
-QasMainWindow :: handle_sweep_down()
-{
-	qas_sweeping = -1;
-}
-
-void
-QasMainWindow :: handle_sweep_timer()
-{
-	int value = sb->value();
-	if (value == sb->maximum() && qas_sweeping == 1)
-		qas_sweeping = -1;
-	if (value == sb->minimum() && qas_sweeping == -1)
-		qas_sweeping = 1;
-	value += qas_sweeping;
-	sb->setValue(value);
+	sb->setRange(0,0);
 }
 
 static void
@@ -535,36 +514,18 @@ main(int argc, char **argv)
 	QApplication app(argc, argv);
 	int c;
 
-	while ((c = getopt(argc, argv, "b:l:r:h")) != -1) {
+	while ((c = getopt(argc, argv, "r:h")) != -1) {
 		switch (c) {
-		case 'b':
-			qas_bands = atoi(optarg);
-			if (qas_bands < 1)
-				qas_bands = 1;
-			break;
 		case 'r':
 			qas_sample_rate = atoi(optarg);
 			if (qas_sample_rate < 1)
 				qas_sample_rate = 1;
-			break;
-		case 'l':
-			qas_logarithmic = atoi(optarg);
 			break;
 		default:
 			usage();
 			break;
 		}
 	}
-
-	qas_max_data = (int64_t *)calloc(1,
-	    sizeof(qas_max_data[0]) * qas_bands);
-	if (qas_max_data == NULL)
-		errx(EX_SOFTWARE, "Out of memory");
-
-	qas_phase_data = (int64_t *)calloc(1,
-	    sizeof(qas_phase_data[0]) * qas_bands);
-	if (qas_phase_data == NULL)
-		errx(EX_SOFTWARE, "Out of memory");
 
 	pthread_t td;
 

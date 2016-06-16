@@ -25,20 +25,13 @@
 
 #include "qaudiosonar.h"
 
-qas_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
+qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
 int	qas_sample_rate = 48000;
 struct dsp_buffer qas_read_buffer;
 struct dsp_buffer qas_write_buffer;
 char	dsp_read_device[1024];
 char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
-int64_t *qas_max_data;
-int64_t *qas_phase_data;
-unsigned qas_bands = 31;
-unsigned qas_which;
-unsigned qas_logarithmic = 2;
-unsigned qas_graph_count;
-double qas_freq;
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -127,131 +120,37 @@ qas_noise(void)
 void *
 qas_dsp_audio_producer(void *arg)
 {
-	static int16_t dsp_wr_noise_array[QAS_FET_SIZE];
-	static int64_t dsp_wr_fet_array[QAS_FET_SIZE];
-	static int64_t dsp_wr_curr_array[QAS_FET_SIZE];
-	static int64_t dsp_wr_next_array[QAS_FET_SIZE];
-
-	qas_filter *curr = NULL;
-	qas_filter *next = NULL;
-
-	double pre_a;
-	double pre_b;
-
 	atomic_lock();
 	while (1) {
 		while (dsp_write_monitor_space(&qas_write_buffer) < QAS_WINDOW_SIZE)
 			atomic_wait();
-
-		if (curr == NULL) {
-			curr = TAILQ_FIRST(&qas_filter_head);
-			if (curr != NULL) {
-				TAILQ_REMOVE(&qas_filter_head, curr, entry);
-				qas_graph_count = 0;
-				qas_which = curr->which;
-				qas_freq = curr->freq;
-			}
-		}
-		if (next == NULL) {
-			next = TAILQ_FIRST(&qas_filter_head);
-			if (next != NULL) {
-				TAILQ_REMOVE(&qas_filter_head, next, entry);
-			}
-		}
-		if (curr == NULL && next == NULL) {
-			for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
-				dsp_put_sample(&qas_write_buffer, 0);
-			atomic_wakeup();
-		} else if (curr != NULL && next == NULL) {
-			atomic_unlock();
-			for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++) {
-				dsp_wr_noise_array[x] =
-				    dsp_wr_noise_array[x + QAS_WINDOW_SIZE];
-				dsp_wr_noise_array[x + QAS_WINDOW_SIZE] =
-				    qas_noise() >> 10;
-			}
-			for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-				dsp_wr_fet_array[x] = dsp_wr_noise_array[x];
-
-			pre_a = fet_prescaler_s64(dsp_wr_fet_array) *
-			    curr->prescaler;
-
-			fet_16384_64(dsp_wr_fet_array);
-			fet_conv_16384_64(dsp_wr_fet_array, curr->filter_fast,
-			    dsp_wr_curr_array);
-			fet_16384_64(dsp_wr_curr_array);
-
-			atomic_lock();
-			for (int64_t x = 0; x != QAS_WINDOW_SIZE; x++) {
-				dsp_put_sample(&qas_write_buffer,
-				    fet_to_lin_64(dsp_wr_curr_array[x +
-				    QAS_WINDOW_SIZE]) / pre_a);
-			}
-			atomic_wakeup();
-		} else if (curr != NULL && next != NULL) {
-			atomic_unlock();
-			for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++) {
-				dsp_wr_noise_array[x] =
-				    dsp_wr_noise_array[x + QAS_WINDOW_SIZE];
-				dsp_wr_noise_array[x + QAS_WINDOW_SIZE] =
-				    qas_noise() >> 10;
-			}
-			for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-				dsp_wr_fet_array[x] = dsp_wr_noise_array[x];
-
-			double pre = fet_prescaler_s64(dsp_wr_fet_array);
-			pre_a = pre * curr->prescaler;
-			pre_b = pre * next->prescaler;
-
-			fet_16384_64(dsp_wr_fet_array);
-			fet_conv_16384_64(dsp_wr_fet_array, curr->filter_fast,
-			    dsp_wr_curr_array);
-			fet_conv_16384_64(dsp_wr_fet_array, next->filter_fast,
-			    dsp_wr_next_array);
-			fet_16384_64(dsp_wr_curr_array);
-			fet_16384_64(dsp_wr_next_array);
-
-			atomic_lock();
-			for (int64_t x = 0; x != QAS_WINDOW_SIZE; x++) {
-				int64_t sc = fet_to_lin_64(dsp_wr_curr_array[x +
-				    QAS_WINDOW_SIZE]) / pre_a;
-				int64_t sn = fet_to_lin_64(dsp_wr_next_array[x +
-				    QAS_WINDOW_SIZE]) / pre_b;
-				int64_t samp = (sc * (QAS_WINDOW_SIZE - x) +
-				    sn * x) / QAS_WINDOW_SIZE;
-				dsp_put_sample(&qas_write_buffer, samp);
-			}
-			atomic_wakeup();
-			delete curr;
-			curr = next;
-			next = NULL;
-			qas_graph_count = 0;
-			qas_which = curr->which;
-			qas_freq = curr->freq;
-		}
+		for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
+			dsp_put_sample(&qas_write_buffer, qas_noise() >> 10);
+		atomic_wakeup();
 	}
 	atomic_unlock();
-
-	return (0);
+	return (NULL);
 }
 
 void
 qas_dsp_sync(void)
 {
+	qas_block_filter *f;
+
+	atomic_filter_lock();
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		f->do_reset();
+	atomic_filter_unlock();
+
 	atomic_graph_lock();
+	memset(qas_graph_data, 0, sizeof(qas_graph_data));
+	atomic_graph_unlock();
+	
 	atomic_lock();
-#if 0
-	while (dsp_monitor_space(&qas_write_buffer))
-		dsp_get_monitor_sample(&qas_write_buffer);
-#endif
 	while (dsp_read_space(&qas_read_buffer))
 		dsp_get_sample(&qas_read_buffer);
-	memset(qas_phase_data, 0, sizeof(qas_phase_data[0])*qas_bands);
-	memset(qas_max_data, 0, sizeof(qas_max_data[0])*qas_bands);
-	qas_graph_count = 0;
 	atomic_wakeup();
 	atomic_unlock();
-	atomic_graph_unlock();
 }
 
 void *
@@ -259,9 +158,12 @@ qas_dsp_audio_analyzer(void *arg)
 {
 	static int16_t dsp_rd_audio[QAS_FET_SIZE];
 	static int16_t dsp_rd_monitor[QAS_MON_SIZE];
+	static int64_t dsp_rd_monitor_temp[QAS_MON_SIZE];
 	static int64_t dsp_rd_fet_array[QAS_FET_SIZE];
 	static int64_t dsp_rd_curr_array[QAS_FET_SIZE];
+	static int64_t dsp_rd_filtered[QAS_WINDOW_SIZE];
 
+	double prescaler;
 	unsigned x,y;
 
 	while (1) {
@@ -277,7 +179,7 @@ qas_dsp_audio_analyzer(void *arg)
 		}
 
 		for (x = 0; x != QAS_WINDOW_SIZE; x++) {
-			dsp_rd_audio[QAS_WINDOW_SIZE -1 - x] =
+			dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x] =
 			    dsp_get_sample(&qas_read_buffer);
 			dsp_rd_monitor[QAS_MON_SIZE - 2 * QAS_WINDOW_SIZE + x] =
 			    dsp_get_monitor_sample(&qas_write_buffer);
@@ -285,13 +187,7 @@ qas_dsp_audio_analyzer(void *arg)
 		atomic_wakeup();
 		atomic_unlock();
 
-		atomic_graph_lock();
-		atomic_lock();
-		int do_zero = (qas_graph_count == 0);
-		atomic_unlock();
-
-		if (do_zero)
-			memset(qas_graph_data, 0, sizeof(qas_graph_data));
+		memset(dsp_rd_monitor_temp, 0, sizeof(dsp_rd_monitor_temp));
 
 		for (y = 0; y <= (QAS_MON_SIZE - QAS_FET_SIZE + QAS_WINDOW_SIZE);
 		     y += (QAS_FET_SIZE - QAS_WINDOW_SIZE)) {
@@ -306,7 +202,7 @@ qas_dsp_audio_analyzer(void *arg)
 				dsp_rd_curr_array[x] = 0;
 			}
 
-			double prescaler = fet_prescaler_s64(dsp_rd_fet_array) *
+			prescaler = fet_prescaler_s64(dsp_rd_fet_array) *
 			    fet_prescaler_s64(dsp_rd_curr_array);
 
 			fet_16384_64(dsp_rd_fet_array);
@@ -316,20 +212,34 @@ qas_dsp_audio_analyzer(void *arg)
 			fet_16384_64(dsp_rd_fet_array);
 
 			for (x = 0; x != QAS_FET_SIZE; x++) {
-				qas_graph_data[x + y] +=
+				dsp_rd_monitor_temp[x + y] += 
 				    fet_to_lin_64(dsp_rd_fet_array[x]) / prescaler;
 			}
 		}
-		for (x = y = 0; x != QAS_MON_SIZE; x++) {
-			if (qas_graph_data[x] > qas_graph_data[y])
-				y = x;
-		}
-		atomic_lock();
-		qas_graph_count++;
-		qas_max_data[qas_which] = qas_graph_data[y] / qas_graph_count;
-		qas_phase_data[qas_which] = y;
-		atomic_unlock();
 
+		for (x = 0; x != QAS_WINDOW_SIZE; x++)
+			dsp_rd_fet_array[x] = dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x];
+		for (; x != QAS_FET_SIZE; x++)
+			dsp_rd_fet_array[x] = 0;
+
+		prescaler = fet_prescaler_s64(dsp_rd_fet_array);
+		fet_16384_64(dsp_rd_fet_array);
+
+		atomic_filter_lock();
+		qas_block_filter *f;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			f->do_block(prescaler, dsp_rd_fet_array, dsp_rd_filtered);
+			f->power *= (1.0 - 1.0 / 32.0);
+			for (x = 0; x != QAS_WINDOW_SIZE; x++)
+				f->power += dsp_rd_filtered[x] * dsp_rd_filtered[x];
+		}
+		atomic_filter_unlock();
+
+		atomic_graph_lock();
+		for (x = 0; x != QAS_MON_SIZE; x++) {
+			qas_graph_data[x] *= (1.0 - 1.0 / 32.0);
+			qas_graph_data[x] += dsp_rd_monitor_temp[x];
+		}
 		atomic_graph_unlock();
 	}
 	return (0);
@@ -392,6 +302,7 @@ qas_dsp_write_thread(void *)
 			}
 			for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
 				buffer[x] = dsp_get_sample(&qas_write_buffer);
+
 			atomic_wakeup();
 			if (strcmp(fname, dsp_write_device)) {
 				atomic_unlock();

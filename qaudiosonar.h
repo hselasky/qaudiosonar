@@ -51,31 +51,36 @@
 #include <QColor>
 #include <QTimer>
 #include <QScrollBar>
+#include <QSpinBox>
 
 #define	QAS_FET_SIZE	0x4000
 #define	QAS_FET_PRIME	0x42000001LL
-#define	QAS_WINDOW_SIZE ((QAS_FET_SIZE / 3) & ~3)
+#define	QAS_WINDOW_SIZE ((QAS_FET_SIZE / 2) & ~3)
 #define	QAS_BUFFER_SIZE (2 * QAS_WINDOW_SIZE)	/* samples */
 #define	QAS_MON_SIZE	(4 * QAS_FET_SIZE)
 
-class qas_filter;
-typedef TAILQ_CLASS_ENTRY(qas_filter) qas_filter_entry_t;
-typedef TAILQ_CLASS_HEAD(,qas_filter) qas_filter_head_t;
+class qas_block_filter;
+typedef TAILQ_CLASS_ENTRY(qas_block_filter) qas_block_filter_entry_t;
+typedef TAILQ_CLASS_HEAD(,qas_block_filter) qas_block_filter_head_t;
 
-class QasMainWindow;
-
-class qas_filter {
+class qas_block_filter {
 public:
-	qas_filter(unsigned filter_size, unsigned which, double amp, double low_hz, double high_hz);
-	~qas_filter() { };
-	qas_filter_entry_t entry;
+	qas_block_filter(double amp, double low_hz, double high_hz);
+	~qas_block_filter() { };
+	void do_block(double, int64_t *, int64_t *);
+	void do_reset();
+	qas_block_filter_entry_t entry;
 	double prescaler;
-	double freq;
-	unsigned which;
 	double filter_lin[QAS_FET_SIZE];
 	int64_t filter_fast[QAS_FET_SIZE];
+	int64_t output[2][QAS_FET_SIZE];
+	int64_t power;
+	double freq;
+	uint32_t tag;
+	uint8_t toggle;
 };
 
+class QasMainWindow;
 class QasGraph : public QWidget {
 	Q_OBJECT
 public:
@@ -94,28 +99,23 @@ class QasMainWindow : public QWidget {
 public:
 	QasMainWindow();
 	~QasMainWindow() { };
-	void get_filter(int, double *, double *, double *);
-	void set_filter(int);
+	void update_sb();
 
 	QGridLayout *gl;
 	QScrollBar *sb;
 	QasGraph *qg;
 	QLineEdit *led_dsp_read;
 	QLineEdit *led_dsp_write;
-	QTimer *sweep_timer;
-	int qas_sweeping;
+	QSpinBox *spn;
 
 public slots:
 	void handle_apply();
-	void handle_sync();
-	void handle_logarithmic();
+	void handle_reset();
+	void handle_del_all();
+	void handle_add_iso();
+	void handle_add_log();
+	void handle_add_lin();	
 	void handle_slider(int);
-	void handle_step_up();
-	void handle_step_down();
-	void handle_sweep_up();
-	void handle_sweep_lock();
-	void handle_sweep_down();
-	void handle_sweep_timer();
 };
 
 struct dsp_buffer {
@@ -125,20 +125,13 @@ struct dsp_buffer {
 	unsigned out_off;
 };
 
-extern qas_filter_head_t qas_filter_head;
+extern qas_block_filter_head_t qas_filter_head;
 extern struct dsp_buffer qas_read_buffer;
 extern struct dsp_buffer qas_write_buffer;
 extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
 extern int qas_sample_rate;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
-extern int64_t *qas_max_data;
-extern int64_t *qas_phase_data;
-extern unsigned qas_logarithmic;
-extern unsigned qas_bands;
-extern unsigned qas_which;
-extern unsigned qas_graph_count;
-extern double qas_freq;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
 int16_t dsp_get_sample(struct dsp_buffer *);
@@ -151,6 +144,8 @@ void atomic_lock();
 void atomic_unlock();
 void atomic_graph_lock();
 void atomic_graph_unlock();
+void atomic_filter_lock();
+void atomic_filter_unlock();
 void atomic_wait();
 void atomic_wakeup();
 
@@ -166,6 +161,6 @@ void fet_conv_16384_64(const int64_t *, const int64_t *, int64_t *);
 void fet_16384_64(int64_t *);
 int64_t fet_to_lin_64(int64_t);
 
-void qas_queue_filter(qas_filter *);
+void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
 
 #endif			/* _QAUDIOSONAR_H_ */

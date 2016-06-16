@@ -109,20 +109,11 @@ fet_prescaler_s64(int64_t *filter)
 	return (prescaler);
 }
 
-qas_filter :: qas_filter(unsigned filter_size, unsigned which, double amp, double low, double high)
-  : which(which)
+qas_block_filter :: qas_block_filter(double amp, double low_hz, double high_hz)
 {
-	if (which >= qas_bands)
-		which = 0;
+	memset(this, 0, sizeof(*this));
 
-	if (filter_size > QAS_FET_SIZE)
-		filter_size = QAS_FET_SIZE;
-
-	filter_size &= ~3;
-
-	memset(filter_lin, 0, sizeof(filter_lin));
-
-	qas_band_pass(low, high, amp, filter_lin, filter_size);
+	qas_band_pass(low_hz, high_hz, amp, filter_lin, QAS_WINDOW_SIZE);
 
 	prescaler = fet_prescaler_double(filter_lin);
 
@@ -131,14 +122,40 @@ qas_filter :: qas_filter(unsigned filter_size, unsigned which, double amp, doubl
 
 	fet_16384_64(filter_fast);
 
-	freq = (low + high) / 2.0;
+	freq = (low_hz + high_hz) / 2.0;
 }
 
 void
-qas_queue_filter(qas_filter *f)
+qas_block_filter :: do_block(double pre, int64_t *input_fet, int64_t *output_lin)
+{
+	fet_conv_16384_64(input_fet, filter_fast, output[toggle]);
+
+	fet_16384_64(output[toggle]);
+
+	pre *= prescaler;
+
+	for (unsigned x = 0; x != QAS_FET_SIZE; x++)
+		output[toggle][x] = fet_to_lin_64(output[toggle][x]) / pre;
+
+	for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
+		output_lin[x] = output[toggle][x] + output[toggle ^ 1][x + QAS_WINDOW_SIZE];
+
+	toggle ^= 1;
+}
+
+void
+qas_block_filter :: do_reset()
+{
+	toggle = 0;
+	power = 0;
+	memset(output, 0, sizeof(output));
+}
+
+void
+qas_queue_block_filter(qas_block_filter *f, qas_block_filter_head_t *phead)
 {
 	atomic_lock();
-	TAILQ_INSERT_TAIL(&qas_filter_head, f, entry);
+	TAILQ_INSERT_TAIL(phead, f, entry);
 	atomic_wakeup();
 	atomic_unlock();
 }
