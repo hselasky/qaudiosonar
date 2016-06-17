@@ -130,8 +130,9 @@ drawGraph(QPainter &paint, int64_t *temp,
 			z = x;
 		sum += temp[x];
 	}
-	sum /= (num ? num : 1);
-	
+	if (num)
+		sum /= num;
+
 	int64_t min = temp[z];
 	int64_t max = temp[y];
 
@@ -233,13 +234,12 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	num = 0;
 	TAILQ_FOREACH(f, &qas_filter_head, entry) {
 		freq[num] = f->freq;
-		power[num] = sqrt(f->power) - sqrt(f->power_ref);
-		if (power[num] == 0)
+		power[num] = f->power - f->power_ref;
+		if (power[num] <= 0) {
+			power[num] = 0;
 			continue;
-		if (power[num] < 0)
-			power[num] = -1000.0 * log(-power[num]) / log(10.0);
-		else
-			power[num] = 1000.0 * log(power[num]) / log(10.0);
+		}
+		power[num] = 1000.0 * log(power[num]) / log(10.0);
 		num++;
 	}
 	atomic_filter_unlock();
@@ -501,10 +501,18 @@ void
 QasMainWindow :: handle_set_profile()
 {
   	qas_block_filter *f;
+	int64_t sum = 0;
+	int64_t num = 0;
 
 	atomic_filter_lock();
+	TAILQ_FOREACH(f, &qas_filter_head, entry) {
+		sum += f->power;
+		num++;
+	}
+	if (num)
+		sum /= num;
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		f->power_ref = f->power;
+		f->power_ref = f->power - sum;
 	atomic_filter_unlock();
 }
 
