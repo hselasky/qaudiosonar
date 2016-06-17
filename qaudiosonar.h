@@ -75,6 +75,7 @@ public:
 	int64_t filter_fast[QAS_FET_SIZE];
 	int64_t output[2][QAS_FET_SIZE];
 	int64_t power;
+	int64_t power_ref;
 	double freq;
 	uint32_t tag;
 	uint8_t toggle;
@@ -114,7 +115,9 @@ public slots:
 	void handle_del_all();
 	void handle_add_iso();
 	void handle_add_log();
-	void handle_add_lin();	
+	void handle_add_lin();
+	void handle_tog_mute();
+	void handle_set_profile();
 	void handle_slider(int);
 };
 
@@ -131,6 +134,7 @@ extern struct dsp_buffer qas_write_buffer;
 extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
 extern int qas_sample_rate;
+extern int qas_mute;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);

@@ -27,6 +27,7 @@
 
 qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
 int	qas_sample_rate = 48000;
+int	qas_mute;
 struct dsp_buffer qas_read_buffer;
 struct dsp_buffer qas_write_buffer;
 char	dsp_read_device[1024];
@@ -105,6 +106,9 @@ qas_noise(void)
 		noise_rem += prime;
 
 	noise_rem /= 2;
+
+	if (qas_mute)
+		return (0);
 
 	temp = noise_rem;
 

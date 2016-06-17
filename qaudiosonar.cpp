@@ -122,61 +122,34 @@ drawGraph(QPainter &paint, int64_t *temp,
 	QColor avg(192,32,32);
 	QColor black(0,0,0);
 
-	double f = 1000.0 / log(10);
-
-	switch (type) {
-	case TYPE_AMP:
-		for (x = 0; x != num; x++) {
-			if (temp[x] <= 0)
-				continue;
-			temp[x] = f * log(temp[x]);
-		}
-		break;
-	default:
-		break;
+	int64_t sum = 0;
+	for (x = y = z = 0; x != num; x++) {
+		if (temp[x] > temp[y])
+			y = x;
+		if (temp[x] < temp[z])
+			z = x;
+		sum += temp[x];
 	}
-
-	switch (type) {
-	case TYPE_CORR:
-		for (x = y = z = 0; x != num; x++) {
-			if (temp[x] > temp[y])
-				y = x;
-			if (temp[x] < temp[z])
-				z = x;
-		}
-		break;
-	default:
-		for (x = y = z = 0; x != num; x++) {
-			if (temp[x] == 0)
-				continue;
-			if (temp[y] == 0 || temp[x] > temp[y])
-				y = x;
-			if (temp[z] == 0 || temp[x] < temp[z])
-				z = x;
-		}
-		break;
-	}
+	sum /= (num ? num : 1);
+	
 	int64_t min = temp[z];
 	int64_t max = temp[y];
-	int64_t zero;
 
-	switch (type) {
-	case TYPE_CORR:
-		if (min < 0)
-			min = -min;
-		if (max < 0)
-			max = -max;
-		if (max < min)
-			max = min;
-		min = -max;
-		zero = 0;
-		break;
-	default:
-		zero = (max + min) / 2;
-		break;
+	if (min < 0)
+		min = -min;
+	if (max < 0)
+		max = -max;
+	if (min < 1)
+		min = 1;
+	if (max < 1)
+		max = 1;
+	if (max < min) {
+		int64_t temp = max;
+		max = min;
+		min = max;
 	}
 
-	int64_t range = (max - min) * 1.125;
+	int64_t range = 2.0 * 1.125 * max;
 	if (range == 0)
 		range = 1;
 
@@ -185,15 +158,9 @@ drawGraph(QPainter &paint, int64_t *temp,
 	paint.setPen(QPen(red,0));
 	paint.setBrush(red);
 
+	QRectF box;
 	for (x = 0; x != num; x++) {
-		int64_t a = temp[x] - zero;
-		switch (type) {
-		case TYPE_AMP:
-			if (temp[x] == 0)
-				a = 0;
-			break;
-		}
-		QRectF box;
+		int64_t a = temp[x];
 		if (a < 0) {
 			box = QRectF(
 			  x_off + (x * delta),
@@ -209,11 +176,19 @@ drawGraph(QPainter &paint, int64_t *temp,
 		}
 		paint.drawRect(box);
 	}
+
+	paint.setPen(QPen(avg,0));
+	paint.setBrush(avg);
+	
+	box = QRectF(0, y_off + (h / 2) - (sum * h) / range,
+		     w, 1);
+	paint.drawRect(box);
+	
 	QString str;
 	switch (type) {
 	case TYPE_CORR:
 		str = QString("CORRELATION MAX=%1dB@%2")
-		  .arg(log(max) * f / 100.0).arg(y);
+		  .arg(10.0 * log(max) / log(10)).arg(y);
 		break;
 	case TYPE_AMP:
 		str = QString("AMPLITUDE MAX=%1dB MIN=%2dB")
@@ -258,7 +233,13 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	num = 0;
 	TAILQ_FOREACH(f, &qas_filter_head, entry) {
 		freq[num] = f->freq;
-		power[num] = f->power;
+		power[num] = sqrt(f->power) - sqrt(f->power_ref);
+		if (power[num] == 0)
+			continue;
+		if (power[num] < 0)
+			power[num] = -1000.0 * log(-power[num]) / log(10.0);
+		else
+			power[num] = 1000.0 * log(power[num]) / log(10.0);
 		num++;
 	}
 	atomic_filter_unlock();
@@ -358,6 +339,14 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_del_all()));
 	gl->addWidget(pb, 1,3,1,1);
 
+	pb = new QPushButton(tr("SetProfile"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_set_profile()));
+	gl->addWidget(pb, 1,4,1,1);
+
+	pb = new QPushButton(tr("MuteTog"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_mute()));
+	gl->addWidget(pb, 1,5,1,1);
+	
 	gl->addWidget(sb, 3,0,1,7);
 	gl->addWidget(qg, 2,0,1,7);
 
@@ -393,6 +382,13 @@ QasMainWindow :: handle_apply()
 void
 QasMainWindow :: handle_reset()
 {
+    	qas_block_filter *f;
+
+	atomic_filter_lock();
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		f->power_ref = 0;
+	atomic_filter_unlock();
+
 	qas_dsp_sync();
 }
 
@@ -499,6 +495,25 @@ QasMainWindow :: handle_del_all()
 	atomic_filter_unlock();
 
 	sb->setRange(0,0);
+}
+
+void
+QasMainWindow :: handle_set_profile()
+{
+  	qas_block_filter *f;
+
+	atomic_filter_lock();
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		f->power_ref = f->power;
+	atomic_filter_unlock();
+}
+
+void
+QasMainWindow :: handle_tog_mute()
+{
+	atomic_lock();
+	qas_mute = !qas_mute;
+	atomic_unlock();
 }
 
 static void
