@@ -36,16 +36,17 @@ qas_low_pass(double freq, double amp, double *factor, unsigned window_size)
 	freq /= qas_sample_rate;
 	freq *= wh;
 
-	//freq -= ((double)wq) * ((double)(int)(freq / (double)(wq)));
-
 #if 0
+	freq -= ((double)wq) * ((double)(int)(freq / (double)(wq)));
+
 	z = (((double)wh) / (2.0 * freq)) * ((double)(int)(2.0 * freq));
 	if (z < 0)
 		z = -z;
 	if (z > wh)
 		z = wh;
-#endif
+#else
 	z = wh;
+#endif
 
 	factor[wh] += (2.0 * amp * freq) / ((double)wh);
 
