@@ -147,7 +147,7 @@ drawGraph(QPainter &paint, int64_t *temp,
 	if (max < min) {
 		int64_t temp = max;
 		max = min;
-		min = max;
+		min = temp;
 	}
 
 	int64_t range = 2.0 * 1.125 * max;
@@ -206,6 +206,18 @@ drawGraph(QPainter &paint, int64_t *temp,
 	paint.drawText(QPoint(x_off,y_off + 16),str);
 }
 
+static double
+qas_to_decibel(double x)
+{
+	if (x == 0)
+		;
+	else if (x < 0)
+		x = -1000.0 * log(-x) / log(10);
+	else
+		x = 1000.0 * log(x) / log(10);
+	return (x);
+}
+
 void
 QasGraph :: paintEvent(QPaintEvent *event)
 {
@@ -232,16 +244,17 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	int64_t power[num];
 
 	num = 0;
+	int64_t sum = 0;
 	TAILQ_FOREACH(f, &qas_filter_head, entry) {
 		freq[num] = f->freq;
-		power[num] = f->power - f->power_ref;
-		if (power[num] <= 0) {
-			power[num] = 0;
-			continue;
-		}
-		power[num] = 1000.0 * log(power[num]) / log(10.0);
+		power[num] = qas_to_decibel(f->power) - qas_to_decibel(f->power_ref);
+		sum += power[num];
 		num++;
 	}
+	if (num)
+		sum /= num;
+	for (unsigned x = 0; x != num; x++)
+		power[x] -= sum;
 	atomic_filter_unlock();
 
 	int64_t corr[QAS_MON_SIZE];
@@ -382,13 +395,6 @@ QasMainWindow :: handle_apply()
 void
 QasMainWindow :: handle_reset()
 {
-    	qas_block_filter *f;
-
-	atomic_filter_lock();
-	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		f->power_ref = 0;
-	atomic_filter_unlock();
-
 	qas_dsp_sync();
 }
 
@@ -403,7 +409,7 @@ QasMainWindow :: update_sb()
 		num++;
 	atomic_filter_unlock();
 
-	sb->setRange(0,num ? num - 1 : num);
+	sb->setRange(0, num ? num - 1 : num);
 }
 
 void
@@ -486,11 +492,16 @@ void
 QasMainWindow :: handle_del_all()
 {
   	qas_block_filter *f;
+  	qas_wave_filter *w;
 
 	atomic_filter_lock();
 	while ((f = TAILQ_FIRST(&qas_filter_head))) {
 		TAILQ_REMOVE(&qas_filter_head, f, entry);
 		delete f;
+	}
+	while ((w = TAILQ_FIRST(&qas_wave_head))) {
+		TAILQ_REMOVE(&qas_wave_head, w, entry);
+		delete w;
 	}
 	atomic_filter_unlock();
 
@@ -501,18 +512,10 @@ void
 QasMainWindow :: handle_set_profile()
 {
   	qas_block_filter *f;
-	int64_t sum = 0;
-	int64_t num = 0;
 
 	atomic_filter_lock();
-	TAILQ_FOREACH(f, &qas_filter_head, entry) {
-		sum += f->power;
-		num++;
-	}
-	if (num)
-		sum /= num;
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		f->power_ref = f->power - sum;
+		f->power_ref = f->power;
 	atomic_filter_unlock();
 }
 

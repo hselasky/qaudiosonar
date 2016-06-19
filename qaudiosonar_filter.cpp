@@ -34,16 +34,18 @@ qas_low_pass(double freq, double amp, double *factor, unsigned window_size)
 	int z;
 
 	freq /= qas_sample_rate;
-	freq *= QAS_WINDOW_SIZE / 2;
+	freq *= wh;
 
-	freq -= ((double)wq) * ((double)(int)(freq / (double)(wq)));
+	//freq -= ((double)wq) * ((double)(int)(freq / (double)(wq)));
 
+#if 0
 	z = (((double)wh) / (2.0 * freq)) * ((double)(int)(2.0 * freq));
-
 	if (z < 0)
 		z = -z;
 	if (z > wh)
 		z = wh;
+#endif
+	z = wh;
 
 	factor[wh] += (2.0 * amp * freq) / ((double)wh);
 
@@ -70,7 +72,7 @@ qas_band_pass(double freq_high, double freq_low, double amp,
 double
 fet_prescaler_double(double *filter)
 {
-	double limit = sqrt(QAS_FET_PRIME / 4);
+	double limit = sqrt((QAS_FET_PRIME * QAS_FET_SIZE) / 4.0);
 	double sum = 0.0;
 	double prescaler;
 
@@ -91,7 +93,7 @@ fet_prescaler_double(double *filter)
 double
 fet_prescaler_s64(int64_t *filter)
 {
-	double limit = sqrt(QAS_FET_PRIME / 4);
+	double limit = sqrt((QAS_FET_PRIME * QAS_FET_SIZE) / 4.0);
 	double sum = 0.0;
 	double prescaler;
 
@@ -148,11 +150,87 @@ qas_block_filter :: do_reset()
 {
 	toggle = 0;
 	power = 0;
+	power_ref = 0;
 	memset(output, 0, sizeof(output));
 }
 
 void
 qas_queue_block_filter(qas_block_filter *f, qas_block_filter_head_t *phead)
+{
+	atomic_lock();
+	TAILQ_INSERT_TAIL(phead, f, entry);
+	atomic_wakeup();
+	atomic_unlock();
+}
+
+qas_wave_filter :: qas_wave_filter(double _freq)
+{
+	memset(this, 0, sizeof(*this));
+
+	freq = _freq;
+
+	unsigned waves = (freq * QAS_WINDOW_SIZE) / qas_sample_rate;
+	freq = (double)qas_sample_rate * (double)waves / (double)QAS_WINDOW_SIZE;
+
+	for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++) {
+		double p = 2.0 * M_PI * freq *
+		    (double)x / (double)qas_sample_rate;
+		t_cos[x] = cos(p);
+		t_sin[x] = sin(p);
+	}
+}
+
+void
+qas_wave_filter :: do_block_in(int64_t *output_lin, unsigned size)
+{
+	for (unsigned x = 0; x != size; x++) {
+		s_cos_in += t_cos[x % QAS_WINDOW_SIZE] * output_lin[x];
+		s_sin_in += t_sin[x % QAS_WINDOW_SIZE] * output_lin[x];
+	}
+}
+
+void
+qas_wave_filter :: do_block_out(int64_t *output_lin, unsigned size)
+{
+	for (unsigned x = 0; x != size; x++) {
+		s_cos_out += t_cos[x % QAS_WINDOW_SIZE] * output_lin[x];
+		s_sin_out += t_sin[x % QAS_WINDOW_SIZE] * output_lin[x];
+	}
+}
+
+void
+qas_wave_filter :: do_flush_in()
+{
+	power_in *= (1.0 - 1.0 / 32.0);
+	power_in += s_cos_in * s_cos_in + s_sin_in * s_sin_in;
+	s_cos_in = 0;
+	s_sin_in = 0;
+}
+
+void
+qas_wave_filter :: do_flush_out()
+{
+	power_out *= (1.0 - 1.0 / 32.0);
+	power_out += s_cos_out * s_cos_out + s_sin_out * s_sin_out;
+	s_cos_out = 0;
+	s_sin_out = 0;
+}
+
+void
+qas_wave_filter :: do_reset()
+{
+	power_in = 0;
+	power_out = 0;
+
+	s_cos_in = 0;
+	s_sin_in = 0;
+
+	s_cos_out = 0;
+	s_sin_out = 0;
+}
+
+void
+qas_queue_wave_filter(qas_wave_filter *f, qas_wave_filter_head_t *phead)
 {
 	atomic_lock();
 	TAILQ_INSERT_TAIL(phead, f, entry);

@@ -26,6 +26,7 @@
 #include "qaudiosonar.h"
 
 qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
+qas_wave_filter_head_t qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
 int	qas_sample_rate = 48000;
 int	qas_mute;
 struct dsp_buffer qas_read_buffer;
@@ -140,16 +141,19 @@ void
 qas_dsp_sync(void)
 {
 	qas_block_filter *f;
+	qas_wave_filter *w;
 
 	atomic_filter_lock();
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
 		f->do_reset();
+	TAILQ_FOREACH(w, &qas_wave_head, entry)
+		w->do_reset();
 	atomic_filter_unlock();
 
 	atomic_graph_lock();
 	memset(qas_graph_data, 0, sizeof(qas_graph_data));
 	atomic_graph_unlock();
-	
+
 	atomic_lock();
 	while (dsp_read_space(&qas_read_buffer))
 		dsp_get_sample(&qas_read_buffer);
@@ -160,12 +164,12 @@ qas_dsp_sync(void)
 void *
 qas_dsp_audio_analyzer(void *arg)
 {
-	static int16_t dsp_rd_audio[QAS_FET_SIZE];
+	static int64_t dsp_rd_audio[QAS_WINDOW_SIZE];
+	static int64_t dsp_rd_filtered[QAS_WINDOW_SIZE];
 	static int16_t dsp_rd_monitor[QAS_MON_SIZE];
 	static int64_t dsp_rd_monitor_temp[QAS_MON_SIZE];
 	static int64_t dsp_rd_fet_array[QAS_FET_SIZE];
 	static int64_t dsp_rd_curr_array[QAS_FET_SIZE];
-	static int64_t dsp_rd_filtered[QAS_WINDOW_SIZE];
 
 	double prescaler;
 	unsigned x,y;
@@ -183,7 +187,7 @@ qas_dsp_audio_analyzer(void *arg)
 		}
 
 		for (x = 0; x != QAS_WINDOW_SIZE; x++) {
-			dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x] =
+			dsp_rd_audio[x] =
 			    dsp_get_sample(&qas_read_buffer);
 			dsp_rd_monitor[QAS_MON_SIZE - 2 * QAS_WINDOW_SIZE + x] =
 			    dsp_get_monitor_sample(&qas_write_buffer);
@@ -196,8 +200,14 @@ qas_dsp_audio_analyzer(void *arg)
 		for (y = 0; y <= (QAS_MON_SIZE - QAS_FET_SIZE + QAS_WINDOW_SIZE);
 		     y += (QAS_FET_SIZE - QAS_WINDOW_SIZE)) {
 
-			for (x = 0; x != (QAS_FET_SIZE - QAS_WINDOW_SIZE); x++) {
-				dsp_rd_fet_array[x] = dsp_rd_audio[x];
+			for (x = 0; x != QAS_WINDOW_SIZE; x++) {
+				dsp_rd_fet_array[x] = dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x];
+				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];
+			}
+
+
+			for (; x != (QAS_FET_SIZE - QAS_WINDOW_SIZE); x++) {
+				dsp_rd_fet_array[x] = 0;
 				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];
 			}
 
@@ -222,7 +232,7 @@ qas_dsp_audio_analyzer(void *arg)
 		}
 
 		for (x = 0; x != QAS_WINDOW_SIZE; x++)
-			dsp_rd_fet_array[x] = dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x];
+			dsp_rd_fet_array[x] = dsp_rd_audio[x];
 		for (; x != QAS_FET_SIZE; x++)
 			dsp_rd_fet_array[x] = 0;
 
@@ -233,9 +243,11 @@ qas_dsp_audio_analyzer(void *arg)
 		qas_block_filter *f;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			f->do_block(prescaler, dsp_rd_fet_array, dsp_rd_filtered);
-			f->power *= (1.0 - 1.0 / 32.0);
+			double sum = 0;
 			for (x = 0; x != QAS_WINDOW_SIZE; x++)
-				f->power += dsp_rd_filtered[x] * dsp_rd_filtered[x];
+				sum += dsp_rd_filtered[x] * dsp_rd_filtered[x];
+			f->power *= (1.0 - 1.0 / 32.0);
+			f->power += sqrt(sum);
 		}
 		atomic_filter_unlock();
 
