@@ -66,10 +66,11 @@ typedef TAILQ_CLASS_HEAD(,qas_block_filter) qas_block_filter_head_t;
 class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
-	~qas_block_filter() { };
+	~qas_block_filter() { delete descr; };
 	void do_block(double, int64_t *, int64_t *);
 	void do_reset();
 	qas_block_filter_entry_t entry;
+	QString *descr;
 	double prescaler;
 	double filter_lin[QAS_FET_SIZE];
 	int64_t filter_fast[QAS_FET_SIZE];
@@ -147,6 +148,7 @@ public slots:
 	void handle_add_iso();
 	void handle_add_log();
 	void handle_add_lin();
+	void handle_add_piano();
 	void handle_tog_mute();
 	void handle_set_profile();
 	void handle_slider(int);

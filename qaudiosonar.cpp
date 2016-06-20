@@ -242,11 +242,14 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	double freq[num];
 	int64_t power[num];
+	QString descr[num];
 
 	num = 0;
 	int64_t sum = 0;
 	TAILQ_FOREACH(f, &qas_filter_head, entry) {
 		freq[num] = f->freq;
+		if (f->descr)
+			descr[num] = *f->descr;
 		power[num] = qas_to_decibel(f->power) - qas_to_decibel(f->power_ref);
 		sum += power[num];
 		num++;
@@ -285,6 +288,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	for (unsigned x = 0; x != num; x++) {
 		str = QString("%1 Hz").arg((double)(int)(2.0 * freq[x]) / 2.0);
+		str += descr[x];
 		paint.drawText(QPoint(-h, xs * x + 8 + xs / 2.0), str);
 		paint.drawRect(QRectF(-h, xs * x, 16, 2));
 	}
@@ -359,6 +363,10 @@ QasMainWindow :: QasMainWindow()
 	pb = new QPushButton(tr("MuteTog"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_mute()));
 	gl->addWidget(pb, 1,5,1,1);
+
+	pb = new QPushButton(tr("AddPiano"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
+	gl->addWidget(pb, 1,6,1,1);
 	
 	gl->addWidget(sb, 3,0,1,7);
 	gl->addWidget(qg, 2,0,1,7);
@@ -478,6 +486,87 @@ QasMainWindow :: handle_add_lin()
 
 		f = new qas_block_filter(1.0, step * (x + 1), step * (x + 2));
 
+		qas_queue_block_filter(f, &qas_filter_head);
+	}
+	update_sb();
+}
+
+void
+QasMainWindow :: handle_add_piano()
+{
+	qas_block_filter *f;
+	unsigned max_bands = spn->value();
+	double max_width;
+	unsigned x;
+	double cf;
+	double lf;
+	double hf;
+	double pf;
+
+	pf = pow(2.0, 1.0 / 12.0);
+
+	x = max_bands;
+	lf = 440.0 * pow(pf, (int)x - 1 - (int)max_bands / 2);
+	cf = 440.0 * pow(pf, (int)x - (int)max_bands / 2);
+	hf = 440.0 * pow(pf, (int)x + 1 - (int)max_bands / 2);
+
+	lf = (lf + cf) / 2.0;
+	hf = (hf + cf) / 2.0;
+
+	max_width = (hf - lf);
+	
+	for (x = 0; x != max_bands; x++) {
+		lf = 440.0 * pow(pf, (int)x - 1 - (int)max_bands / 2);
+		cf = 440.0 * pow(pf, (int)x - (int)max_bands / 2);
+		hf = 440.0 * pow(pf, (int)x + 1 - (int)max_bands / 2);
+
+		lf = (lf + cf) / 2.0;
+		hf = (hf + cf) / 2.0;
+
+		f = new qas_block_filter(sqrt(max_width / (hf - lf)), lf, hf);
+
+		int key = (12 + x - ((max_bands / 2) % 12) + 9) % 12;
+		
+		switch (key) {
+		case 9:
+			f->descr = new QString(" - A");
+			break;
+		case 11:
+			f->descr = new QString(" - H");
+			break;
+		case 0:
+			f->descr = new QString(" - C");
+			break;
+		case 2:
+			f->descr = new QString(" - D");
+			break;
+		case 4:
+			f->descr = new QString(" - E");
+			break;
+		case 5:
+			f->descr = new QString(" - F");
+			break;
+		case 7:
+			f->descr = new QString(" - G");
+			break;
+		case 10:
+			f->descr = new QString(" - Hb");
+			break;
+		case 8:
+			f->descr = new QString(" - Ab");
+			break;
+		case 6:
+			f->descr = new QString(" - Gb");
+			break;
+		case 3:
+			f->descr = new QString(" - Eb");
+			break;
+		case 1:
+			f->descr = new QString(" - Db");
+			break;
+		default:
+			break;
+		}
 		qas_queue_block_filter(f, &qas_filter_head);
 	}
 	update_sb();
