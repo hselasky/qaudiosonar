@@ -161,7 +161,7 @@ drawGraph(QPainter &paint, int64_t *temp,
 
 	QRectF box;
 	for (x = 0; x != num; x++) {
-		int64_t a = temp[x];
+		int64_t a = -temp[x];
 		if (a < 0) {
 			box = QRectF(
 			  x_off + (x * delta),
@@ -206,6 +206,55 @@ drawGraph(QPainter &paint, int64_t *temp,
 	paint.drawText(QPoint(x_off,y_off + 16),str);
 }
 
+static void
+drawImage(QPainter &paint, int64_t *temp,
+    int x_off, int y_off, int w, int h, unsigned num, unsigned sel)
+{
+	unsigned x;
+	unsigned y;
+	unsigned z;
+
+	for (x = y = z = 0; x != QAS_HISTORY_SIZE * num; x++) {
+		if (temp[x] > temp[y])
+			y = x;
+		if (temp[x] < temp[z])
+			z = x;
+	}
+	int64_t min = temp[z];
+	int64_t max = temp[y];
+
+	if (min < 0)
+		min = -min;
+	if (max < 0)
+		max = -max;
+	if (min < 1)
+		min = 1;
+	if (max < 1)
+		max = 1;
+	if (max < min) {
+		int64_t temp = max;
+		max = min;
+		min = temp;
+	}
+
+	for (x = 0; x != num; x++) {
+		for (y = 0; y != QAS_HISTORY_SIZE; y++) {
+			int64_t value = temp[y + x * QAS_HISTORY_SIZE];
+			uint8_t code = (value > 0) ? (255 * value) / max : 0;
+			QColor white(code, 255-code, (x != sel) ? 0 : 127);
+
+			paint.setPen(QPen(white,0));
+			paint.setBrush(white);
+
+			QRectF box(x_off + (w * x) / (double)num,
+				   y_off + (h * y) / (double)QAS_HISTORY_SIZE,
+				   (w * 1) / (double)num,
+				   (h * 1) / (double)QAS_HISTORY_SIZE);
+			paint.drawRect(box);
+		}
+	}
+}
+
 static double
 qas_to_decibel(double x)
 {
@@ -241,7 +290,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		num++;
 
 	double freq[num];
-	int64_t power[num];
+	int64_t power[num][QAS_HISTORY_SIZE];
 	QString descr[num];
 
 	num = 0;
@@ -250,14 +299,20 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		freq[num] = f->freq;
 		if (f->descr)
 			descr[num] = *f->descr;
-		power[num] = qas_to_decibel(f->power) - qas_to_decibel(f->power_ref);
-		sum += power[num];
+		for (unsigned x = 0; x != QAS_HISTORY_SIZE; x++) {
+			power[num][x] =
+			  qas_to_decibel(f->power[(QAS_HISTORY_SIZE - 1 +
+			      qas_power_index - x) % QAS_HISTORY_SIZE]) -
+			  qas_to_decibel(f->power_ref);
+			sum += power[num][x];
+		}
 		num++;
 	}
 	if (num)
-		sum /= num;
+		sum /= num * QAS_HISTORY_SIZE;
 	for (unsigned x = 0; x != num; x++)
-		power[x] -= sum;
+		for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++)
+			power[x][y] -= sum;
 	atomic_filter_unlock();
 
 	int64_t corr[QAS_MON_SIZE];
@@ -274,7 +329,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.drawRect(QRectF(xv,0,xs,h));
 
 	drawGraph(paint, corr, 0, 0, w, h / 2, QAS_MON_SIZE, TYPE_CORR);
-	drawGraph(paint, power, 0, h / 2, w, h / 2, num, TYPE_AMP);
+	drawImage(paint, &power[0][0], 0, h / 2, w, h / 2, num, mw->sb->value());
 
 	QFont fnt = paint.font();
 	QString str;
@@ -352,6 +407,10 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_lin()));
 	gl->addWidget(pb, 0,6,1,1);
 
+	pb = new QPushButton(tr("AddPiano"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
+	gl->addWidget(pb, 0,7,1,1);
+	
 	pb = new QPushButton(tr("DelAll"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_del_all()));
 	gl->addWidget(pb, 1,3,1,1);
@@ -364,12 +423,16 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_mute()));
 	gl->addWidget(pb, 1,5,1,1);
 
-	pb = new QPushButton(tr("AddPiano"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
+	pb = new QPushButton(tr("TogFrz"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 1,6,1,1);
+
+	pb = new QPushButton(tr("TogNoise"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
+	gl->addWidget(pb, 1,7,1,1);
 	
-	gl->addWidget(sb, 3,0,1,7);
-	gl->addWidget(qg, 2,0,1,7);
+	gl->addWidget(sb, 3,0,1,8);
+	gl->addWidget(qg, 2,0,1,8);
 
 	gl->setRowStretch(1,1);
 
@@ -604,7 +667,7 @@ QasMainWindow :: handle_set_profile()
 
 	atomic_filter_lock();
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		f->power_ref = f->power;
+		f->power_ref = f->power[0];
 	atomic_filter_unlock();
 }
 
@@ -612,7 +675,23 @@ void
 QasMainWindow :: handle_tog_mute()
 {
 	atomic_lock();
-	qas_mute = !qas_mute;
+	qas_mute = (qas_mute + 1) % 3;
+	atomic_unlock();
+}
+
+void
+QasMainWindow :: handle_tog_freeze()
+{
+	atomic_lock();
+	qas_freeze = !qas_freeze;
+	atomic_unlock();
+}
+
+void
+QasMainWindow :: handle_tog_noise()
+{
+	atomic_lock();
+	qas_noise_type = !qas_noise_type;
 	atomic_unlock();
 }
 

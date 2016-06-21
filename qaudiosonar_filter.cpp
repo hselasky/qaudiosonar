@@ -28,7 +28,9 @@
 static void
 qas_low_pass(double freq, double amp, double *factor, unsigned window_size)
 {
+#if 0
 	int wq = window_size / 4;
+#endif
 	int wh = window_size / 2;
 	int x;
 	int z;
@@ -150,7 +152,7 @@ void
 qas_block_filter :: do_reset()
 {
 	toggle = 0;
-	power = 0;
+	memset(power, 0, sizeof(power));
 	power_ref = 0;
 	memset(output, 0, sizeof(output));
 }

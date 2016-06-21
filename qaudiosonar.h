@@ -58,6 +58,7 @@
 #define	QAS_WINDOW_SIZE ((QAS_FET_SIZE / 2) & ~3)
 #define	QAS_BUFFER_SIZE (2 * QAS_WINDOW_SIZE)	/* samples */
 #define	QAS_MON_SIZE	(4 * QAS_FET_SIZE)
+#define	QAS_HISTORY_SIZE (48000 * 8 / QAS_FET_SIZE)
 
 class qas_block_filter;
 typedef TAILQ_CLASS_ENTRY(qas_block_filter) qas_block_filter_entry_t;
@@ -75,7 +76,7 @@ public:
 	double filter_lin[QAS_FET_SIZE];
 	int64_t filter_fast[QAS_FET_SIZE];
 	int64_t output[2][QAS_FET_SIZE];
-	int64_t power;
+	int64_t power[QAS_HISTORY_SIZE];
 	int64_t power_ref;
 	double freq;
 	uint32_t tag;
@@ -150,6 +151,8 @@ public slots:
 	void handle_add_lin();
 	void handle_add_piano();
 	void handle_tog_mute();
+	void handle_tog_freeze();
+	void handle_tog_noise();
 	void handle_set_profile();
 	void handle_slider(int);
 };
@@ -169,7 +172,10 @@ extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
 extern int qas_sample_rate;
 extern int qas_mute;
+extern int qas_noise_type;
+extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
+extern unsigned qas_power_index;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
 int16_t dsp_get_sample(struct dsp_buffer *);
