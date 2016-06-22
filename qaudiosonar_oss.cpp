@@ -222,7 +222,6 @@ qas_dsp_audio_analyzer(void *arg)
 				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];
 			}
 
-
 			for (; x != (QAS_FET_SIZE - QAS_WINDOW_SIZE); x++) {
 				dsp_rd_fet_array[x] = 0;
 				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];

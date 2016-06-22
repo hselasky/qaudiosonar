@@ -161,7 +161,7 @@ drawGraph(QPainter &paint, int64_t *temp,
 
 	QRectF box;
 	for (x = 0; x != num; x++) {
-		int64_t a = -temp[x];
+		int64_t a = temp[x];
 		if (a < 0) {
 			box = QRectF(
 			  x_off + (x * delta),

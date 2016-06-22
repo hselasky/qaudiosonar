@@ -75,12 +75,12 @@ qas_band_pass(double freq_high, double freq_low, double amp,
 double
 fet_prescaler_double(double *filter)
 {
-	double limit = sqrt((QAS_FET_PRIME * QAS_FET_SIZE) / 4.0);
+	double limit = sqrt(QAS_FET_PRIME / 4.0);
 	double sum = 0.0;
 	double prescaler;
 
 	for (unsigned x = 0; x != QAS_FET_SIZE; x++) {
-		if (filter[x] < 0)
+		if (filter[x] < 0.0)
 			sum -= filter[x];
 		else
 			sum += filter[x];
@@ -96,12 +96,12 @@ fet_prescaler_double(double *filter)
 double
 fet_prescaler_s64(int64_t *filter)
 {
-	double limit = sqrt((QAS_FET_PRIME * QAS_FET_SIZE) / 4.0);
+	double limit = sqrt(QAS_FET_PRIME / 4.0);
 	double sum = 0.0;
 	double prescaler;
 
 	for (unsigned x = 0; x != QAS_FET_SIZE; x++) {
-		if (filter[x] < 0)
+		if (filter[x] < 0.0)
 			sum -= filter[x];
 		else
 			sum += filter[x];
