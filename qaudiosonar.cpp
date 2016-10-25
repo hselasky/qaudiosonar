@@ -96,6 +96,15 @@ atomic_wakeup(void)
 	pthread_cond_broadcast(&atomic_cv);
 }
 
+QasBand :: QasBand(QasMainWindow *_mw)
+{
+	mw = _mw;
+	watchdog = new QTimer(this);
+	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
+	last_key = 0;
+	watchdog->start(500);
+}
+
 QasGraph :: QasGraph(QasMainWindow *_mw)
 {
 	mw = _mw;
@@ -267,6 +276,140 @@ qas_to_decibel(double x)
 	return (x);
 }
 
+static const QString
+qas_band_to_key(uint8_t key)
+{
+	switch (key) {
+	case 9:
+		return ("A%1");
+	case 11:
+		return ("H%1");
+	case 0:
+		return ("C%1");
+	case 2:
+		return ("D%1");
+	case 4:
+		return ("E%1");
+	case 5:
+		return ("F%1");
+	case 7:
+		return ("G%1");
+	case 10:
+		return ("H%1B");
+	case 8:
+		return ("A%1B");
+	case 6:
+		return ("G%1B");
+	case 3:
+		return ("E%1B");
+	case 1:
+		return ("D%1B");
+	default:
+		return ("??");
+	}
+}
+
+struct qas_band_info {
+	int64_t power;
+	uint8_t band;
+};
+
+static int
+qas_band_compare(const void *_pa, const void *_pb)
+{
+	struct qas_band_info *pa = (struct qas_band_info *)_pa;
+	struct qas_band_info *pb = (struct qas_band_info *)_pb;
+
+	if (pa->power > pb->power)
+		return (-1);
+	else if (pa->power < pb->power)
+		return (1);
+	return (0);
+}
+
+void
+QasBand :: paintEvent(QPaintEvent *event)
+{
+	QPainter paint(this);
+	int w = width();
+	int h = height();
+	uint32_t key = 0;
+
+	QColor white(255,255,255);
+	QColor grey(127,127,127);
+	QColor black(0,0,0);
+
+	paint.setPen(QPen(white,0));
+	paint.setBrush(white);
+	paint.drawRect(QRectF(0,0,w,h));
+
+	atomic_filter_lock();
+	struct qas_band_info band[QAS_BAND_SIZE];
+	int64_t max = 0;
+	int64_t min = 0x7FFFFFFFFFFFFFFFULL;
+	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+		band[x].power = qas_band_power[x];
+		band[x].band = x - 1;
+		if (band[x].power > max)
+			max = band[x].power;
+		if (band[x].power < min)
+			min = band[x].power;
+	}
+	int64_t delta = max - min;
+	if (delta == 0)
+		delta = 1;
+	atomic_filter_unlock();
+
+	mergesort(band + 1, QAS_BAND_SIZE - 1, sizeof(band[0]), &qas_band_compare);
+
+	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+		QRectF rect((w * band[x].band) / 12, 0, (w + 11) / 12, h);
+
+		int64_t code = ((band[x].power - min) * 255LL) / delta;
+		if (code > 255)
+			code = 255;
+		else if (code < 0)
+			code = 0;
+
+		if (code >= 192) {
+			key |= (1U << x);
+			if (x == 1)
+				key |= (1U << (x + 12));
+		}
+
+		QColor gradient(code, 255-code, 127);
+		paint.setPen(QPen(gradient,0));
+		paint.setBrush(gradient);
+		paint.drawRect(rect);
+	}
+
+	if (key != last_key) {
+		last_key = key;
+		QString temp;
+		unsigned x;
+
+		/* base key */
+		temp += QString(qas_band_to_key(band[1].band)).arg(4) + " ";
+
+		/* regular keys */
+		for (x = 1; x != QAS_BAND_SIZE; x++) {
+			if (band[x].power < band[1].power * 0.75)
+				break;
+			temp += QString(qas_band_to_key(band[x].band)).arg(5) + " ";
+		}
+		if (x != QAS_BAND_SIZE) {
+			temp += " /* ";
+			for ( ; x != QAS_BAND_SIZE; x++)
+				temp += QString(qas_band_to_key(band[x].band)).arg(5) + " ";
+			temp += "*/";
+		}
+		temp = temp.trimmed();
+
+		
+		mw->edit->append(temp);
+	}
+}
+
 void
 QasGraph :: paintEvent(QPaintEvent *event)
 {
@@ -295,6 +438,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	num = 0;
 	int64_t sum = 0;
+
 	TAILQ_FOREACH(f, &qas_filter_head, entry) {
 		freq[num] = f->freq;
 		if (f->descr)
@@ -352,6 +496,12 @@ QasGraph :: paintEvent(QPaintEvent *event)
 }
 
 void
+QasBand :: handle_watchdog()
+{
+	update();
+}
+
+void
 QasGraph :: handle_watchdog()
 {
 	update();
@@ -364,6 +514,7 @@ QasMainWindow :: QasMainWindow()
 	gl = new QGridLayout(this);
 
 	qg = new QasGraph(this);
+	qb = new QasBand(this);
 
 	sb = new QScrollBar(Qt::Horizontal);
 	sb->setRange(0, 0);
@@ -430,7 +581,11 @@ QasMainWindow :: QasMainWindow()
 	pb = new QPushButton(tr("TogNoise"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
 	gl->addWidget(pb, 1,7,1,1);
-	
+
+	edit = new QTextEdit();
+	gl->addWidget(edit, 1,8,2,1);
+
+	gl->addWidget(qb, 0,8,1,1);
 	gl->addWidget(sb, 3,0,1,8);
 	gl->addWidget(qg, 2,0,1,8);
 
@@ -467,6 +622,7 @@ void
 QasMainWindow :: handle_reset()
 {
 	qas_dsp_sync();
+	edit->setPlainText(QString());
 }
 
 void
@@ -566,6 +722,9 @@ QasMainWindow :: handle_add_piano()
 	double hf;
 	double pf;
 
+	/* must be power of 12 */
+	max_bands += (12 - (max_bands % 12)) % 12;
+
 	pf = pow(2.0, 1.0 / 12.0);
 
 	x = max_bands;
@@ -589,7 +748,9 @@ QasMainWindow :: handle_add_piano()
 		f = new qas_block_filter(sqrt(max_width / (hf - lf)), lf, hf);
 
 		int key = (12 + x - ((max_bands / 2) % 12) + 9) % 12;
-		
+
+		f->band = key + 1;
+
 		switch (key) {
 		case 9:
 			f->descr = new QString(" - A");

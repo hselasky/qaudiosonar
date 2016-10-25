@@ -28,7 +28,7 @@
 qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
 qas_wave_filter_head_t qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
 int	qas_sample_rate = 48000;
-int	qas_mute;
+int	qas_mute = 1;
 int	qas_freeze;
 int	qas_noise_type;
 unsigned qas_power_index;
@@ -37,6 +37,7 @@ struct dsp_buffer qas_write_buffer;
 char	dsp_read_device[1024];
 char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
+int64_t qas_band_power[QAS_BAND_SIZE];
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -270,6 +271,7 @@ qas_dsp_audio_analyzer(void *arg)
 				sum += y * y;
 			}
 			f->power[qas_power_index] = sqrt(sum);
+			qas_band_power[f->band] = f->power[qas_power_index];
 		}
 		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 		atomic_filter_unlock();
