@@ -101,7 +101,9 @@ QasBand :: QasBand(QasMainWindow *_mw)
 	mw = _mw;
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
-	last_key = 0;
+	last_pi = 0;
+
+	setMinimumSize(200,480);
 	watchdog->start(500);
 }
 
@@ -333,7 +335,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	QPainter paint(this);
 	int w = width();
 	int h = height();
-	uint32_t key = 0;
+	unsigned pi;
 
 	QColor white(255,255,255);
 	QColor grey(127,127,127);
@@ -344,70 +346,62 @@ QasBand :: paintEvent(QPaintEvent *event)
 	paint.drawRect(QRectF(0,0,w,h));
 
 	atomic_filter_lock();
-	struct qas_band_info band[QAS_BAND_SIZE];
+	struct qas_band_info band[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 	int64_t max = 0;
-	int64_t min = 0x7FFFFFFFFFFFFFFFULL;
-	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-		band[x].power = qas_band_power[x];
-		band[x].band = x - 1;
-		if (band[x].power > max)
-			max = band[x].power;
-		if (band[x].power < min)
-			min = band[x].power;
+	pi = qas_power_index;
+	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
+		band[y][0].power = qas_band_power[y][0];
+		band[y][0].band = 255;
+		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+			band[y][x].power = qas_band_power[y][x];
+			band[y][x].band = x - 1;
+			if (band[y][x].power > max)
+				max = band[y][x].power;
+		}
 	}
-	int64_t delta = max - min;
-	if (delta == 0)
-		delta = 1;
+	if (max == 0)
+		max = 1;
 	atomic_filter_unlock();
 
-	mergesort(band + 1, QAS_BAND_SIZE - 1, sizeof(band[0]), &qas_band_compare);
+	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
+		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+			unsigned z = (QAS_HISTORY_SIZE - 1 + pi - y) % QAS_HISTORY_SIZE;
+			QRectF rect((w * band[y][x].band) / 12, (h * z) / QAS_HISTORY_SIZE,
+			    (w + 11) / 12, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
 
-	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-		QRectF rect((w * band[x].band) / 12, 0, (w + 11) / 12, h);
+			int64_t code = (band[y][x].power * 255LL) / max;
+			if (code > 255)
+				code = 255;
+			else if (code < 0)
+				code = 0;
 
-		int64_t code = ((band[x].power - min) * 255LL) / delta;
-		if (code > 255)
-			code = 255;
-		else if (code < 0)
-			code = 0;
-
-		if (code >= 192) {
-			key |= (1U << x);
-			if (x == 1)
-				key |= (1U << (x + 12));
+			QColor gradient(code, 255-code, 0);
+			paint.setPen(QPen(gradient,0));
+			paint.setBrush(gradient);
+			paint.drawRect(rect);
 		}
-
-		QColor gradient(code, 255-code, 127);
-		paint.setPen(QPen(gradient,0));
-		paint.setBrush(gradient);
-		paint.drawRect(rect);
 	}
 
-	if (key != last_key) {
-		last_key = key;
-		QString temp;
-		unsigned x;
+	last_pi = pi;
 
-		/* base key */
-		temp += QString(qas_band_to_key(band[1].band)).arg(4) + " ";
+	QFont fnt(paint.font());
 
-		/* regular keys */
-		for (x = 1; x != QAS_BAND_SIZE; x++) {
-			if (band[x].power < band[1].power * 0.75)
-				break;
-			temp += QString(qas_band_to_key(band[x].band)).arg(5) + " ";
-		}
-		if (x != QAS_BAND_SIZE) {
-			temp += " /* ";
-			for ( ; x != QAS_BAND_SIZE; x++)
-				temp += QString(qas_band_to_key(band[x].band)).arg(5) + " ";
-			temp += "*/";
-		}
-		temp = temp.trimmed();
+	fnt.setPixelSize(16);
+	paint.setFont(fnt);
+	paint.setPen(QPen(black,0));
+	paint.setBrush(black);
 
-		
-		mw->edit->append(temp);
+	paint.rotate(-90);
+
+	for (unsigned x = 0; x != 12; x++) {
+		QString str = QString(qas_band_to_key(x)).arg(5);
+		qreal xs = (qreal)w / 12.0;
+		paint.drawText(QPoint(-h, xs * x + 8 + xs / 2.0), str);
+		paint.drawRect(QRectF(-h, xs * x, 16, 2));
 	}
+
+	paint.rotate(90);
+
 }
 
 void
@@ -582,12 +576,9 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
 	gl->addWidget(pb, 1,7,1,1);
 
-	edit = new QTextEdit();
-	gl->addWidget(edit, 1,8,2,1);
-
-	gl->addWidget(qb, 0,8,1,1);
-	gl->addWidget(sb, 3,0,1,8);
-	gl->addWidget(qg, 2,0,1,8);
+	gl->addWidget(qb, 0,8,4,1);
+	gl->addWidget(sb, 4,0,1,8);
+	gl->addWidget(qg, 2,0,2,8);
 
 	gl->setRowStretch(1,1);
 
@@ -622,7 +613,10 @@ void
 QasMainWindow :: handle_reset()
 {
 	qas_dsp_sync();
-	edit->setPlainText(QString());
+
+	atomic_filter_lock();
+	memset(qas_band_power, 0, sizeof(qas_band_power));
+	atomic_filter_unlock();
 }
 
 void
@@ -836,7 +830,7 @@ void
 QasMainWindow :: handle_tog_mute()
 {
 	atomic_lock();
-	qas_mute = (qas_mute + 1) % 3;
+	qas_mute = (qas_mute + 1) % 4;
 	atomic_unlock();
 }
 

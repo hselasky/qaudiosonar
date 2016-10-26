@@ -27,8 +27,8 @@
 
 qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
 qas_wave_filter_head_t qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
-int	qas_sample_rate = 48000;
-int	qas_mute = 1;
+int	qas_sample_rate = QAS_SAMPLE_RATE;
+int	qas_mute = 3;
 int	qas_freeze;
 int	qas_noise_type;
 unsigned qas_power_index;
@@ -37,7 +37,7 @@ struct dsp_buffer qas_write_buffer;
 char	dsp_read_device[1024];
 char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
-int64_t qas_band_power[QAS_BAND_SIZE];
+int64_t qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -200,13 +200,17 @@ qas_dsp_audio_analyzer(void *arg)
 
 			for (x = 0; x != QAS_WINDOW_SIZE; x++) {
 				int16_t mon;
+				int16_t inp;
 
-				dsp_rd_audio[x] =
-				    dsp_get_sample(&qas_read_buffer);
-
+				inp = dsp_get_sample(&qas_read_buffer);
 				mon = dsp_get_monitor_sample(&qas_write_buffer);
+
 				if (qas_mute == 2)
-					dsp_rd_audio[x] = mon;
+					inp = mon;
+				else if (qas_mute == 3)
+					mon = inp;
+
+				dsp_rd_audio[x] = inp;
 				dsp_rd_monitor[QAS_MON_SIZE - 2 * QAS_WINDOW_SIZE + x] = mon;
 			}
 			atomic_wakeup();
@@ -257,6 +261,8 @@ qas_dsp_audio_analyzer(void *arg)
 		fet_16384_64(dsp_rd_fet_array);
 
 		atomic_filter_lock();
+		for (x = 0; x != QAS_BAND_SIZE; x++)
+			qas_band_power[qas_power_index][x] *= 0.85;
 		qas_block_filter *f;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			f->do_block(prescaler, dsp_rd_fet_array, dsp_rd_filtered);
@@ -270,8 +276,9 @@ qas_dsp_audio_analyzer(void *arg)
 				double y = (dsp_rd_filtered[x] - avg);
 				sum += y * y;
 			}
+
 			f->power[qas_power_index] = sqrt(sum);
-			qas_band_power[f->band] = f->power[qas_power_index];
+			qas_band_power[qas_power_index][f->band] += sum;
 		}
 		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 		atomic_filter_unlock();

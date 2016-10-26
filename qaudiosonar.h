@@ -52,15 +52,15 @@
 #include <QTimer>
 #include <QScrollBar>
 #include <QSpinBox>
-#include <QTextEdit>
 
+#define	QAS_SAMPLE_RATE	48000
 #define	QAS_FET_SIZE	0x4000
 #define	QAS_FET_PRIME	0x42000001LL
 #define	QAS_WINDOW_SIZE ((QAS_FET_SIZE / 2) & ~3)
 #define	QAS_BUFFER_SIZE (2 * QAS_WINDOW_SIZE)	/* samples */
 #define	QAS_MON_SIZE	(4 * QAS_FET_SIZE)
 #define	QAS_BAND_SIZE	13
-#define	QAS_HISTORY_SIZE (48000 * 8 / QAS_FET_SIZE)
+#define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_WINDOW_SIZE)
 
 class qas_block_filter;
 typedef TAILQ_CLASS_ENTRY(qas_block_filter) qas_block_filter_entry_t;
@@ -125,7 +125,7 @@ public:
 	~QasBand() { };
 	QasMainWindow *mw;
 	QTimer *watchdog;
-	uint32_t last_key;
+	unsigned last_pi;
 	void paintEvent(QPaintEvent *);
 
 public slots:
@@ -159,7 +159,6 @@ public:
 	QLineEdit *led_dsp_read;
 	QLineEdit *led_dsp_write;
 	QSpinBox *spn;
-	QTextEdit *edit;
 
 public slots:
 	void handle_apply();
@@ -194,7 +193,7 @@ extern int qas_mute;
 extern int qas_noise_type;
 extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
-extern int64_t qas_band_power[QAS_BAND_SIZE];
+extern int64_t qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern unsigned qas_power_index;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
