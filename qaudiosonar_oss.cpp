@@ -261,8 +261,12 @@ qas_dsp_audio_analyzer(void *arg)
 		fet_16384_64(dsp_rd_fet_array);
 
 		atomic_filter_lock();
-		for (x = 0; x != QAS_BAND_SIZE; x++)
-			qas_band_power[qas_power_index][x] *= 0.85;
+		unsigned prev = (qas_power_index + QAS_HISTORY_SIZE - 1) % QAS_HISTORY_SIZE;
+		for (x = 0; x != QAS_BAND_SIZE; x++) {
+			qas_band_power[qas_power_index][x] =
+				qas_band_power[prev][x] * 0.75;
+		}
+
 		qas_block_filter *f;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			f->do_block(prescaler, dsp_rd_fet_array, dsp_rd_filtered);
