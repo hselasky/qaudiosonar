@@ -350,10 +350,10 @@ QasBand :: paintEvent(QPaintEvent *event)
 	int64_t max = 0;
 	pi = qas_power_index;
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
-		band[y][0].power = qas_band_power[y][0];
+		band[y][0].power = sqrt(qas_band_power[y][0]);
 		band[y][0].band = 255;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-			band[y][x].power = qas_band_power[y][x];
+			band[y][x].power = sqrt(qas_band_power[y][x]);
 			band[y][x].band = x - 1;
 			if (band[y][x].power > max)
 				max = band[y][x].power;
