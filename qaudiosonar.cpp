@@ -616,7 +616,7 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
 	gl->addWidget(pb, 1,7,1,1);
 
-	gl->addWidget(qb, 0,8,4,1);
+	gl->addWidget(qb, 0,8,6,2);
 	gl->addWidget(sb_zoom, 2,0,1,8);
 	gl->addWidget(sb, 5,0,1,8);
 	gl->addWidget(qg, 3,0,2,8);
