@@ -154,6 +154,7 @@ public:
 
 	QGridLayout *gl;
 	QScrollBar *sb;
+	QScrollBar *sb_zoom;
 	QasBand *qb;
 	QasGraph *qg;
 	QLineEdit *led_dsp_read;

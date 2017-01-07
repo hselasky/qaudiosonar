@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2017 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -121,8 +121,13 @@ enum {
 	TYPE_AMP,
 };
 
+struct qas_corr {
+	int64_t value;
+	double width;
+};
+
 static void
-drawGraph(QPainter &paint, int64_t *temp,
+drawGraph(QPainter &paint, struct qas_corr *temp,
     int x_off, int y_off, int w, int h, unsigned num, unsigned type)
 {
 	unsigned x;
@@ -134,18 +139,20 @@ drawGraph(QPainter &paint, int64_t *temp,
 	QColor black(0,0,0);
 
 	int64_t sum = 0;
+	double total_width = 0;
 	for (x = y = z = 0; x != num; x++) {
-		if (temp[x] > temp[y])
+		if (temp[x].value > temp[y].value)
 			y = x;
-		if (temp[x] < temp[z])
+		if (temp[x].value < temp[z].value)
 			z = x;
-		sum += temp[x];
+		sum += temp[x].value;
+		total_width += temp[x].width;
 	}
 	if (num)
 		sum /= num;
 
-	int64_t min = temp[z];
-	int64_t max = temp[y];
+	int64_t min = temp[z].value;
+	int64_t max = temp[y].value;
 
 	if (min < 0)
 		min = -min;
@@ -165,28 +172,46 @@ drawGraph(QPainter &paint, int64_t *temp,
 	if (range == 0)
 		range = 1;
 
-	double delta = w / (double)num;
-
 	paint.setPen(QPen(red,0));
 	paint.setBrush(red);
 
+	double x_tmp = x_off;
 	QRectF box;
 	for (x = 0; x != num; x++) {
-		int64_t a = temp[x];
+		int64_t a = temp[x].value;
+		double delta = (double)w * temp[x].width / total_width;
 		if (a < 0) {
 			box = QRectF(
-			  x_off + (x * delta),
+			  x_tmp,
 			  y_off + (h / 2),
 			  delta,
 			  (-a * h) / range);
 		} else {
 			box = QRectF(
-			  x_off + (x * delta),
+			  x_tmp,
 			  y_off + (h / 2) - (a * h) / range,
 			  delta,
 			  (a * h) / range);
 		}
 		paint.drawRect(box);
+		x_tmp += delta;
+	}
+
+	paint.setPen(QPen(black,0));
+	paint.setBrush(black);
+
+	x_tmp = x_off;
+	for (x = 0; x < num; x++) {
+		double delta = (double)w * temp[x].width / total_width;
+
+		if ((x % ((num + 15) / 16)) == 0) {
+			box = QRectF(x_tmp,
+				     y_off + (h / 2) - 8,
+				     1.0,
+				     16);
+			paint.drawRect(box);
+		}
+		x_tmp += delta;
 	}
 
 	paint.setPen(QPen(avg,0));
@@ -428,7 +453,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	double freq[num];
 	int64_t power[num][QAS_HISTORY_SIZE];
-	QString descr[num];
+	QString *descr = new QString [num];
 
 	num = 0;
 	int64_t sum = 0;
@@ -453,10 +478,18 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			power[x][y] -= sum;
 	atomic_filter_unlock();
 
-	int64_t corr[QAS_MON_SIZE];
+	struct qas_corr corr[QAS_MON_SIZE];
+
+	int zoom = mw->sb_zoom->value();
 
 	atomic_graph_lock();
-	memcpy(corr, qas_graph_data, sizeof(corr));
+	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+		int64_t offset = (int64_t)x - (int64_t)zoom;
+		if (offset < 0)
+			offset = -offset;
+		corr[x].value = qas_graph_data[x];
+		corr[x].width = pow(QAS_MON_SIZE - offset, 4.0);
+	}
 	atomic_graph_unlock();
 
 	double xs = w / (double)num;
@@ -487,6 +520,8 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	}
 
 	paint.rotate(90);
+
+	delete [] descr;
 }
 
 void
@@ -509,6 +544,11 @@ QasMainWindow :: QasMainWindow()
 
 	qg = new QasGraph(this);
 	qb = new QasBand(this);
+
+	sb_zoom = new QScrollBar(Qt::Horizontal);
+	sb_zoom->setRange(0, QAS_MON_SIZE - 1);
+	sb_zoom->setSingleStep(1);
+	sb_zoom->setValue(0);
 
 	sb = new QScrollBar(Qt::Horizontal);
 	sb->setRange(0, 0);
@@ -577,8 +617,9 @@ QasMainWindow :: QasMainWindow()
 	gl->addWidget(pb, 1,7,1,1);
 
 	gl->addWidget(qb, 0,8,4,1);
-	gl->addWidget(sb, 4,0,1,8);
-	gl->addWidget(qg, 2,0,2,8);
+	gl->addWidget(sb_zoom, 2,0,1,8);
+	gl->addWidget(sb, 5,0,1,8);
+	gl->addWidget(qg, 3,0,2,8);
 
 	gl->setRowStretch(1,1);
 
