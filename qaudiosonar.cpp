@@ -103,6 +103,11 @@ QasBand :: QasBand(QasMainWindow *_mw)
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
 	last_pi = 0;
 
+	for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
+		mapping[x] = x;
+
+	memset(band, 0, sizeof(band));
+
 	setMinimumSize(200,480);
 	watchdog->start(500);
 }
@@ -336,11 +341,6 @@ qas_band_to_key(uint8_t key)
 	}
 }
 
-struct qas_band_info {
-	int64_t power;
-	uint8_t band;
-};
-
 static int
 qas_band_compare(const void *_pa, const void *_pb)
 {
@@ -352,6 +352,32 @@ qas_band_compare(const void *_pa, const void *_pb)
 	else if (pa->power < pb->power)
 		return (1);
 	return (0);
+}
+
+void
+QasBand :: mousePressEvent(QMouseEvent *event)
+{
+	unsigned h = height() ? height() : 1;
+	unsigned index = (QAS_HISTORY_SIZE * event->y()) / h;
+	struct qas_band_info temp[QAS_BAND_SIZE];
+
+	if (index >= (QAS_HISTORY_SIZE - 1)) {
+		for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
+			mapping[x] = x;
+		update();
+		return;
+	}
+
+	for (unsigned x = 0; x != QAS_BAND_SIZE; x++) {
+		temp[x].power = band[index][x].power;
+		temp[x].band = x;
+	}
+
+	mergesort(temp + 1, QAS_BAND_SIZE - 1, sizeof(temp[0]), &qas_band_compare);
+
+	for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
+		mapping[x] = temp[x].band;
+	update();
 }
 
 void
@@ -371,14 +397,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 	paint.drawRect(QRectF(0,0,w,h));
 
 	atomic_filter_lock();
-	struct qas_band_info band[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 	int64_t max = 0;
 	pi = qas_power_index;
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
+		unsigned z = (QAS_HISTORY_SIZE - 1 + pi - y) % QAS_HISTORY_SIZE;
 		band[y][0].power = sqrt(qas_band_power[y][0]);
 		band[y][0].band = 255;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-			band[y][x].power = sqrt(qas_band_power[y][x]);
+			band[y][x].power = sqrt(qas_band_power[z][x]);
 			band[y][x].band = x - 1;
 			if (band[y][x].power > max)
 				max = band[y][x].power;
@@ -390,17 +416,16 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-			unsigned z = (QAS_HISTORY_SIZE - 1 + pi - y) % QAS_HISTORY_SIZE;
-			QRectF rect((w * band[y][x].band) / 12, (h * z) / QAS_HISTORY_SIZE,
+			QRectF rect((w * (x - 1)) / 12, (h * y) / QAS_HISTORY_SIZE,
 			    (w + 11) / 12, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
 
-			int64_t code = (band[y][x].power * 255LL) / max;
+			int64_t code = (band[y][mapping[x]].power * 255LL) / max;
 			if (code > 255)
 				code = 255;
 			else if (code < 0)
 				code = 0;
 
-			QColor gradient(code, 255-code, 0);
+			QColor gradient(code, 255 - code, 0);
 			paint.setPen(QPen(gradient,0));
 			paint.setBrush(gradient);
 			paint.drawRect(rect);
@@ -418,11 +443,11 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	paint.rotate(-90);
 
-	for (unsigned x = 0; x != 12; x++) {
-		QString str = QString(qas_band_to_key(x)).arg(5);
+	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+		QString str = QString(qas_band_to_key(mapping[x] - 1)).arg(5);
 		qreal xs = (qreal)w / 12.0;
-		paint.drawText(QPoint(-h, xs * x + 8 + xs / 2.0), str);
-		paint.drawRect(QRectF(-h, xs * x, 16, 2));
+		paint.drawText(QPoint(-h, xs * (x - 1) + 8 + xs / 2.0), str);
+		paint.drawRect(QRectF(-h, xs * (x - 1), 16, 2));
 	}
 
 	paint.rotate(90);

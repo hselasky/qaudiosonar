@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2017 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -52,6 +52,7 @@
 #include <QTimer>
 #include <QScrollBar>
 #include <QSpinBox>
+#include <QMouseEvent>
 
 #define	QAS_SAMPLE_RATE	48000
 #define	QAS_FET_SIZE	0x4000
@@ -61,6 +62,11 @@
 #define	QAS_MON_SIZE	(4 * QAS_FET_SIZE)
 #define	QAS_BAND_SIZE	13
 #define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_WINDOW_SIZE)
+
+struct qas_band_info {
+	int64_t power;
+	uint8_t band;
+};
 
 class qas_block_filter;
 typedef TAILQ_CLASS_ENTRY(qas_block_filter) qas_block_filter_entry_t;
@@ -126,7 +132,11 @@ public:
 	QasMainWindow *mw;
 	QTimer *watchdog;
 	unsigned last_pi;
+	uint8_t mapping[QAS_BAND_SIZE];
+	struct qas_band_info band[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
+
 	void paintEvent(QPaintEvent *);
+	void mousePressEvent(QMouseEvent *);
 
 public slots:
 	void handle_watchdog();
