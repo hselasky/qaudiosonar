@@ -477,6 +477,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		num++;
 
 	double freq[num];
+	double amp[num];
 	int64_t power[num][QAS_HISTORY_SIZE];
 	QString *descr = new QString [num];
 
@@ -498,12 +499,14 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	}
 	if (num)
 		sum /= num * QAS_HISTORY_SIZE;
-	for (unsigned x = 0; x != num; x++)
+	for (unsigned x = 0; x != num; x++) {
 		for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++)
 			power[x][y] -= sum;
+	}
 	atomic_filter_unlock();
 
 	struct qas_corr corr[QAS_MON_SIZE];
+	int64_t corr_raw[QAS_MON_SIZE];
 
 	int zoom = mw->sb_zoom->value();
 
@@ -514,8 +517,32 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			offset = -offset;
 		corr[x].value = qas_graph_data[x];
 		corr[x].width = pow(QAS_MON_SIZE - offset, 4.0);
+
+		corr_raw[x] = qas_graph_data[x];
 	}
 	atomic_graph_unlock();
+
+	atomic_filter_lock();
+	unsigned fn = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry) {
+		if (fn < num) {
+			f->do_mon_block_in(corr_raw);
+			if (f->t_amp > 1.0)
+				amp[fn++] = log(f->t_amp);
+			else
+				amp[fn++] = 0.0;
+		}
+	}
+	while (fn < num)
+		amp[fn++] = 0;
+	atomic_filter_unlock();
+
+	double amp_max = 1;
+
+	for (fn = 0; fn != num; fn++) {
+		if (amp_max < amp[fn])
+			amp_max = amp[fn];
+	}
 
 	double xs = w / (double)num;
 	double xv = mw->sb->value() * xs;
@@ -534,6 +561,13 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setFont(fnt);
 	paint.setPen(QPen(black,0));
 	paint.setBrush(black);
+
+	for (unsigned x = 0; x != num; x++) {
+		double hhh = h / 4.0;
+		double hh = h / 2.0;
+		paint.drawRect(QRectF(xs * x, hh -
+		    (amp[x] / amp_max) * hhh, xs, 2.0));
+	}
 
 	paint.rotate(-90);
 
@@ -865,16 +899,11 @@ void
 QasMainWindow :: handle_del_all()
 {
   	qas_block_filter *f;
-  	qas_wave_filter *w;
 
 	atomic_filter_lock();
 	while ((f = TAILQ_FIRST(&qas_filter_head))) {
 		TAILQ_REMOVE(&qas_filter_head, f, entry);
 		delete f;
-	}
-	while ((w = TAILQ_FIRST(&qas_wave_head))) {
-		TAILQ_REMOVE(&qas_wave_head, w, entry);
-		delete w;
 	}
 	atomic_filter_unlock();
 

@@ -128,6 +128,13 @@ qas_block_filter :: qas_block_filter(double amp, double low_hz, double high_hz)
 	fet_16384_64(filter_fast);
 
 	freq = (low_hz + high_hz) / 2.0;
+
+	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+		double p = 2.0 * M_PI * freq *
+		    (double)x / (double)qas_sample_rate;
+		t_cos[x] = cos(p);
+		t_sin[x] = sin(p);
+	}
 }
 
 void
@@ -158,82 +165,23 @@ qas_block_filter :: do_reset()
 }
 
 void
-qas_queue_block_filter(qas_block_filter *f, qas_block_filter_head_t *phead)
+qas_block_filter :: do_mon_block_in(const int64_t *output_lin)
 {
+	double s_cos_in = 0;
+	double s_sin_in = 0;
+
+	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+		s_cos_in += t_cos[x] * output_lin[x];
+		s_sin_in += t_sin[x] * output_lin[x];
+	}
+
 	atomic_lock();
-	TAILQ_INSERT_TAIL(phead, f, entry);
-	atomic_wakeup();
+	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in);
 	atomic_unlock();
 }
 
-qas_wave_filter :: qas_wave_filter(double _freq)
-{
-	memset(this, 0, sizeof(*this));
-
-	freq = _freq;
-
-	unsigned waves = (freq * QAS_WINDOW_SIZE) / qas_sample_rate;
-	freq = (double)qas_sample_rate * (double)waves / (double)QAS_WINDOW_SIZE;
-
-	for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++) {
-		double p = 2.0 * M_PI * freq *
-		    (double)x / (double)qas_sample_rate;
-		t_cos[x] = cos(p);
-		t_sin[x] = sin(p);
-	}
-}
-
 void
-qas_wave_filter :: do_block_in(int64_t *output_lin, unsigned size)
-{
-	for (unsigned x = 0; x != size; x++) {
-		s_cos_in += t_cos[x % QAS_WINDOW_SIZE] * output_lin[x];
-		s_sin_in += t_sin[x % QAS_WINDOW_SIZE] * output_lin[x];
-	}
-}
-
-void
-qas_wave_filter :: do_block_out(int64_t *output_lin, unsigned size)
-{
-	for (unsigned x = 0; x != size; x++) {
-		s_cos_out += t_cos[x % QAS_WINDOW_SIZE] * output_lin[x];
-		s_sin_out += t_sin[x % QAS_WINDOW_SIZE] * output_lin[x];
-	}
-}
-
-void
-qas_wave_filter :: do_flush_in()
-{
-	power_in *= (1.0 - 1.0 / 32.0);
-	power_in += s_cos_in * s_cos_in + s_sin_in * s_sin_in;
-	s_cos_in = 0;
-	s_sin_in = 0;
-}
-
-void
-qas_wave_filter :: do_flush_out()
-{
-	power_out *= (1.0 - 1.0 / 32.0);
-	power_out += s_cos_out * s_cos_out + s_sin_out * s_sin_out;
-	s_cos_out = 0;
-	s_sin_out = 0;
-}
-
-void
-qas_wave_filter :: do_reset()
-{
-	power_in = 0;
-	power_out = 0;
-
-	s_cos_in = 0;
-	s_sin_in = 0;
-
-	s_cos_out = 0;
-	s_sin_out = 0;
-}
-
-void
-qas_queue_wave_filter(qas_wave_filter *f, qas_wave_filter_head_t *phead)
+qas_queue_block_filter(qas_block_filter *f, qas_block_filter_head_t *phead)
 {
 	atomic_lock();
 	TAILQ_INSERT_TAIL(phead, f, entry);

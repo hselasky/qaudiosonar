@@ -77,6 +77,7 @@ public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
 	void do_block(double, int64_t *, int64_t *);
+	void do_mon_block_in(const int64_t *);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
@@ -86,41 +87,13 @@ public:
 	int64_t output[2][QAS_FET_SIZE];
 	int64_t power[QAS_HISTORY_SIZE];
 	int64_t power_ref;
+	double t_cos[QAS_MON_SIZE];
+	double t_sin[QAS_MON_SIZE];
+	double t_amp;
 	double freq;
 	uint32_t tag;
 	uint8_t toggle;
 	uint8_t band;
-};
-
-class qas_wave_filter;
-typedef TAILQ_CLASS_ENTRY(qas_wave_filter) qas_wave_filter_entry_t;
-typedef TAILQ_CLASS_HEAD(,qas_wave_filter) qas_wave_filter_head_t;
-
-class qas_wave_filter {
-public:
-	qas_wave_filter(double freq);
-	~qas_wave_filter() { };
-	void do_block_in(int64_t *, unsigned);
-	void do_block_out(int64_t *, unsigned);
-	void do_flush_in();
-	void do_flush_out();
-	void do_reset();
-
-	qas_wave_filter_entry_t entry;
-
-	double t_cos[QAS_WINDOW_SIZE];
-	double t_sin[QAS_WINDOW_SIZE];
-
-	double freq;
-
-	double power_in;
-	double power_out;
-
-	double s_cos_in;
-	double s_sin_in;
-
-	double s_cos_out;
-	double s_sin_out;
 };
 
 class QasMainWindow;
@@ -194,7 +167,6 @@ struct dsp_buffer {
 };
 
 extern qas_block_filter_head_t qas_filter_head;
-extern qas_wave_filter_head_t qas_wave_head;
 extern struct dsp_buffer qas_read_buffer;
 extern struct dsp_buffer qas_write_buffer;
 extern char dsp_read_device[1024];
@@ -236,6 +208,5 @@ void fet_16384_64(int64_t *);
 int64_t fet_to_lin_64(int64_t);
 
 void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
-void qas_queue_wave_filter(qas_wave_filter *, qas_wave_filter_head_t *);
 
 #endif			/* _QAUDIOSONAR_H_ */

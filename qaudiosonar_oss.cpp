@@ -26,7 +26,6 @@
 #include "qaudiosonar.h"
 
 qas_block_filter_head_t qas_filter_head = TAILQ_HEAD_INITIALIZER(qas_filter_head);
-qas_wave_filter_head_t qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
 int	qas_sample_rate = QAS_SAMPLE_RATE;
 int	qas_mute = 3;
 int	qas_freeze;
@@ -152,13 +151,10 @@ void
 qas_dsp_sync(void)
 {
 	qas_block_filter *f;
-	qas_wave_filter *w;
 
 	atomic_filter_lock();
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
 		f->do_reset();
-	TAILQ_FOREACH(w, &qas_wave_head, entry)
-		w->do_reset();
 	atomic_filter_unlock();
 
 	atomic_graph_lock();
