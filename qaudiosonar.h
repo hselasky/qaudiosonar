@@ -53,6 +53,7 @@
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QMouseEvent>
+#include <QPlainTextEdit>
 
 #define	QAS_SAMPLE_RATE	48000
 #define	QAS_FET_SIZE	0x4000
@@ -128,6 +129,67 @@ public slots:
 	void handle_watchdog();
 };
 
+class QasRecord;
+class QasRecordEntry;
+typedef TAILQ_CLASS_ENTRY(QasRecordEntry) QasRecordEntry_t;
+typedef TAILQ_CLASS_HEAD(,QasRecordEntry) QasRecordEntryHead_t;
+
+class QasRecordShow : public QWidget {
+	Q_OBJECT
+public:
+	QasRecordShow(QasRecord *);
+	~QasRecordShow() { };
+	QasRecord *qr;
+	void paintEvent(QPaintEvent *);
+	void mousePressEvent(QMouseEvent *);
+};
+
+class QasRecordEntry {
+public:
+	QasRecordEntry(const unsigned n) {
+		pvalue = (int64_t *)malloc(8 * n);
+		pdesc = new QString [n];
+		num = n;
+	};
+	~QasRecordEntry() {
+		free(pvalue);
+		delete [] pdesc;
+	};
+	QasRecordEntry_t entry;
+	QString comment;
+	QString *pdesc;
+	int64_t *pvalue;
+	unsigned num;
+};
+
+class QasRecord : public QWidget {
+	Q_OBJECT
+public:
+	QasRecord();
+	~QasRecord();
+
+	QasRecordEntryHead_t head;
+	QPoint select;
+
+	QGridLayout *gl;
+	QPlainTextEdit *pEdit;
+	QPushButton *pButReset;
+	QPushButton *pButToggle;
+	QPushButton *pButInsert;
+	QScrollBar *pSB;
+	QasRecordShow *pShow;
+	QLabel *pLabel;
+	int do_record;
+
+	void insert_entry(QasRecordEntry *);
+
+public slots:
+	void handle_reset();
+	void handle_toggle();
+	void handle_insert();
+	void handle_slider(int);
+};
+
 class QasMainWindow : public QWidget {
 	Q_OBJECT
 public:
@@ -135,6 +197,7 @@ public:
 	~QasMainWindow() { };
 	void update_sb();
 
+	QasRecord *qr;
 	QGridLayout *gl;
 	QScrollBar *sb;
 	QScrollBar *sb_zoom;

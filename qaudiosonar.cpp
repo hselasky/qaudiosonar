@@ -592,12 +592,40 @@ QasBand :: handle_watchdog()
 void
 QasGraph :: handle_watchdog()
 {
+	unsigned int num;
+	int64_t power;
+	qas_block_filter *f;
+
+	atomic_filter_lock();
+	num = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		num++;
+	QasRecordEntry *qr = new QasRecordEntry(num);
+	num = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry) {
+	  	QString str;
+		power = qas_to_decibel(f->power[(QAS_HISTORY_SIZE - 1 +
+		    qas_power_index) % QAS_HISTORY_SIZE]) -
+		    qas_to_decibel(f->power_ref);
+		qr->pvalue[num] = power;
+		str = QString("%1 Hz").arg((double)(int)(2.0 * f->freq) / 2.0);
+		if (f->descr != 0)
+			str += f->descr;
+		qr->pdesc[num] = str;
+		num++;
+	}
+	atomic_filter_unlock();
+
+	mw->qr->insert_entry(qr);
+
 	update();
 }
 
 QasMainWindow :: QasMainWindow()
 {
 	QPushButton *pb;
+
+	qr = new QasRecord();
 
 	gl = new QGridLayout(this);
 
@@ -681,6 +709,8 @@ QasMainWindow :: QasMainWindow()
 	gl->addWidget(qg, 3,0,2,8);
 
 	gl->setRowStretch(1,1);
+
+	qr->show();
 
 	setWindowTitle(tr("Quick Audio Sonar v1.0"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
