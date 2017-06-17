@@ -76,7 +76,8 @@ QasRecord :: ~QasRecord()
 QasRecordShow :: QasRecordShow(QasRecord *qr) :
     QWidget(), qr(qr)
 {
-
+	setMinimumWidth(256);
+	setFocusPolicy(Qt::ClickFocus);
 }
 
 void
@@ -173,6 +174,39 @@ QasRecordShow :: mousePressEvent(QMouseEvent *event)
 {
 	qr->select = QPoint(event->x(),event->y());
 	update();
+}
+
+void
+QasRecordShow :: keyPressEvent(QKeyEvent *event)
+{
+	QScrollBar *ps = qr->pSB;
+	int value;
+
+	value = ps->value();
+
+	switch (event->key()) {
+	case Qt::Key_PageDown:
+	case Qt::Key_Down:
+		value ++;
+		break;
+	case Qt::Key_Up:
+	case Qt::Key_PageUp:
+		value --;
+		break;
+	case Qt::Key_End:
+		value = ps->maximum();
+		break;
+	case Qt::Key_Home:
+		value = 0;
+		break;
+	default:
+		goto done;
+	}
+
+	if (value >= ps->minimum() && value <= ps->maximum())
+		ps->setValue(value);
+done:
+	event->accept();
 }
 
 void

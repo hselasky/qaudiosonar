@@ -703,14 +703,16 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
 	gl->addWidget(pb, 1,7,1,1);
 
-	gl->addWidget(qb, 0,8,6,2);
-	gl->addWidget(sb_zoom, 2,0,1,8);
-	gl->addWidget(sb, 5,0,1,8);
-	gl->addWidget(qg, 3,0,2,8);
+	pb = new QPushButton(tr("ShowRecord"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_show_record()));
+	gl->addWidget(pb, 1,8,1,1);
+
+	gl->addWidget(qb, 0,9,6,2);
+	gl->addWidget(sb_zoom, 2,0,1,9);
+	gl->addWidget(sb, 5,0,1,9);
+	gl->addWidget(qg, 3,0,2,9);
 
 	gl->setRowStretch(1,1);
-
-	qr->show();
 
 	setWindowTitle(tr("Quick Audio Sonar v1.0"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -973,6 +975,12 @@ QasMainWindow :: handle_tog_noise()
 	atomic_lock();
 	qas_noise_type = !qas_noise_type;
 	atomic_unlock();
+}
+
+void
+QasMainWindow :: handle_show_record()
+{
+	qr->show();
 }
 
 static void

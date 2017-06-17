@@ -142,6 +142,7 @@ public:
 	QasRecord *qr;
 	void paintEvent(QPaintEvent *);
 	void mousePressEvent(QMouseEvent *);
+	void keyPressEvent(QKeyEvent *);
 };
 
 class QasRecordEntry {
@@ -220,6 +221,7 @@ public slots:
 	void handle_tog_noise();
 	void handle_set_profile();
 	void handle_slider(int);
+	void handle_show_record();
 };
 
 struct dsp_buffer {
