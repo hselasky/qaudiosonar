@@ -197,6 +197,7 @@ public:
 	QasMainWindow();
 	~QasMainWindow() { };
 	void update_sb();
+	void update_qr();
 
 	QasRecord *qr;
 	QGridLayout *gl;

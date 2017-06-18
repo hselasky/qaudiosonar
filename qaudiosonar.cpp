@@ -592,32 +592,7 @@ QasBand :: handle_watchdog()
 void
 QasGraph :: handle_watchdog()
 {
-	unsigned int num;
-	int64_t power;
-	qas_block_filter *f;
-
-	atomic_filter_lock();
-	num = 0;
-	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		num++;
-	QasRecordEntry *qr = new QasRecordEntry(num);
-	num = 0;
-	TAILQ_FOREACH(f, &qas_filter_head, entry) {
-	  	QString str;
-		power = qas_to_decibel(f->power[(QAS_HISTORY_SIZE - 1 +
-		    qas_power_index) % QAS_HISTORY_SIZE]) -
-		    qas_to_decibel(f->power_ref);
-		qr->pvalue[num] = power;
-		str = QString("%1 Hz").arg((double)(int)(2.0 * f->freq) / 2.0);
-		if (f->descr != 0)
-			str += f->descr;
-		qr->pdesc[num] = str;
-		num++;
-	}
-	atomic_filter_unlock();
-
-	mw->qr->insert_entry(qr);
-
+	mw->update_qr();
 	update();
 }
 
@@ -981,6 +956,39 @@ void
 QasMainWindow :: handle_show_record()
 {
 	qr->show();
+}
+
+void
+QasMainWindow :: update_qr()
+{
+	unsigned int num;
+	qas_block_filter *f;
+	int64_t power;
+	static unsigned int qas_last_index;
+
+	atomic_filter_lock();
+	num = 0;
+	TAILQ_FOREACH(f, &qas_filter_head, entry)
+		num++;
+	while ((qas_last_index - qas_power_index) % QAS_HISTORY_SIZE) {
+		QasRecordEntry *rec = new QasRecordEntry(num);
+		num = 0;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			QString str;
+			power = qas_to_decibel(f->power[(QAS_HISTORY_SIZE - 1 +
+			    qas_last_index) % QAS_HISTORY_SIZE]) -
+			    qas_to_decibel(f->power_ref);
+			rec->pvalue[num] = power;
+			str = QString("%1 Hz").arg((double)(int)(2.0 * f->freq) / 2.0);
+			if (f->descr != 0)
+				str += f->descr;
+			rec->pdesc[num] = str;
+			num++;
+		}
+		qas_last_index++;
+		qr->insert_entry(rec);
+	}
+	atomic_filter_unlock();
 }
 
 static void
