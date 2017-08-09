@@ -7,7 +7,7 @@ QT		+= widgets
 }
 HEADERS         = qaudiosonar.h
 SOURCES         += qaudiosonar.cpp
-SOURCES		+= qaudiosonar_fet.cpp
+SOURCES		+= qaudiosonar_mul.cpp
 SOURCES		+= qaudiosonar_filter.cpp
 SOURCES		+= qaudiosonar_oss.cpp
 SOURCES         += qaudiosonar_record.cpp

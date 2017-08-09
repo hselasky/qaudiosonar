@@ -72,61 +72,15 @@ qas_band_pass(double freq_high, double freq_low, double amp,
 	qas_low_pass(-freq_high, amp, factor, window_size);
 }
 
-double
-fet_prescaler_double(double *filter)
-{
-	double limit = sqrt(QAS_FET_PRIME / 4.0);
-	double sum = 0.0;
-	double prescaler;
-
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++) {
-		if (filter[x] < 0.0)
-			sum -= filter[x];
-		else
-			sum += filter[x];
-	}
-	prescaler = (limit / sum);
-
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-		filter[x] *= prescaler;
-
-	return (prescaler);
-}
-
-double
-fet_prescaler_s64(int64_t *filter)
-{
-	double limit = sqrt(QAS_FET_PRIME / 4.0);
-	double sum = 0.0;
-	double prescaler;
-
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++) {
-		if (filter[x] < 0.0)
-			sum -= filter[x];
-		else
-			sum += filter[x];
-	}
-	prescaler = (limit / sum);
-
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-		filter[x] *= prescaler;
-
-	return (prescaler);
-}
-
 qas_block_filter :: qas_block_filter(double amp, double low_hz, double high_hz)
 {
 	memset(this, 0, sizeof(*this));
 
-	qas_band_pass(low_hz, high_hz, amp, filter_lin, QAS_WINDOW_SIZE);
+	qas_band_pass(low_hz, high_hz, amp, filter_lin, QAS_MUL_SIZE);
 
-	prescaler = fet_prescaler_double(filter_lin);
-
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-		filter_fast[x] = filter_lin[x];
-
-	fet_16384_64(filter_fast);
-
+	qas_mul_import_double(filter_lin, filter_fast, QAS_MUL_SIZE);
+	qas_mul_xform_fwd_double(filter_fast, QAS_MUL_SIZE);
+	
 	freq = (low_hz + high_hz) / 2.0;
 
 	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
@@ -138,19 +92,32 @@ qas_block_filter :: qas_block_filter(double amp, double low_hz, double high_hz)
 }
 
 void
-qas_block_filter :: do_block(double pre, int64_t *input_fet, int64_t *output_lin)
+qas_block_filter :: do_block(const double *input_filter, double *output_lin)
 {
-	fet_conv_16384_64(input_fet, filter_fast, output[toggle]);
+	/* multiply the two vectors */
+	for (unsigned x = 0; x != QAS_FILTER_SIZE; x++)
+		output[toggle][0][x] = input_filter[x] * filter_fast[x];
 
-	fet_16384_64(output[toggle]);
+	/* compute correlation */
+	qas_mul_xform_inv_double(output[toggle][0], QAS_MUL_SIZE);
 
-	pre *= prescaler;
+	/* re-order vector array */
+	for (unsigned x = 0; x != QAS_FILTER_SIZE; x++)
+		output[toggle][1][x] = output[toggle][0][qas_mul_context->table[x]];
 
-	for (unsigned x = 0; x != QAS_FET_SIZE; x++)
-		output[toggle][x] = fet_to_lin_64(output[toggle][x]) / pre;
+	/* final error correction */
+	qas_mul_xform_inv_double(output[toggle][1], QAS_MUL_SIZE);
 
-	for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
-		output_lin[x] = output[toggle][x] + output[toggle ^ 1][x + QAS_WINDOW_SIZE];
+	/* zero the result before exporting */
+	memset(output[toggle][0], 0, 2 * QAS_MUL_SIZE * sizeof(double));
+
+	/* export */
+	qas_mul_export_double(output[toggle][1], output[toggle][0], QAS_MUL_SIZE);
+
+	for (unsigned x = 0; x != QAS_MUL_SIZE; x++) {
+		output_lin[x] = output[toggle][0][x] +
+		    output[toggle ^ 1][0][x + QAS_MUL_SIZE];
+	}
 
 	toggle ^= 1;
 }

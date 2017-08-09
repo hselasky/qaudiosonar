@@ -137,9 +137,9 @@ qas_dsp_audio_producer(void *arg)
 {
 	atomic_lock();
 	while (1) {
-		while (dsp_write_monitor_space(&qas_write_buffer) < QAS_WINDOW_SIZE)
+		while (dsp_write_monitor_space(&qas_write_buffer) < QAS_MUL_SIZE)
 			atomic_wait();
-		for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
+		for (unsigned x = 0; x != QAS_MUL_SIZE; x++)
 			dsp_put_sample(&qas_write_buffer, qas_noise() >> 10);
 		atomic_wakeup();
 	}
@@ -171,32 +171,27 @@ qas_dsp_sync(void)
 void *
 qas_dsp_audio_analyzer(void *arg)
 {
-	static int64_t dsp_rd_audio[QAS_WINDOW_SIZE];
-	static int64_t dsp_rd_filtered[QAS_WINDOW_SIZE];
-	static int16_t dsp_rd_monitor[QAS_MON_SIZE];
-	static int64_t dsp_rd_monitor_temp[QAS_MON_SIZE];
-	static int64_t dsp_rd_fet_array[QAS_FET_SIZE];
-	static int64_t dsp_rd_curr_array[QAS_FET_SIZE];
-
-	double prescaler;
-	unsigned x,y;
+	static double dsp_rd_audio[QAS_MUL_SIZE];
+	static double dsp_rd_monitor[QAS_MUL_SIZE];
+	static double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_FILTER_SIZE];
+	static double dsp_rd_aud_fwd_filter[QAS_FILTER_SIZE];
+	static double dsp_rd_aud_rev_filter[QAS_FILTER_SIZE];
+	static double dsp_rd_temp_filter[2][QAS_FILTER_SIZE];
+	static double dsp_rd_monitor_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
+	static double dsp_rd_filtered[QAS_MUL_SIZE];
+	static unsigned dsp_rd_mon_filter_index = 0;
 
 	while (1) {
 		atomic_lock();
 		do {
-			while (dsp_monitor_space(&qas_write_buffer) < QAS_WINDOW_SIZE ||
-			       dsp_read_space(&qas_read_buffer) < QAS_WINDOW_SIZE) {
+			while (dsp_monitor_space(&qas_write_buffer) < QAS_MUL_SIZE ||
+			       dsp_read_space(&qas_read_buffer) < QAS_MUL_SIZE) {
 				atomic_wait();
 			}
 
-			for (x = 0; x != (QAS_MON_SIZE - 2 * QAS_WINDOW_SIZE); x++) {
-				dsp_rd_monitor[x] =
-				    dsp_rd_monitor[x + QAS_WINDOW_SIZE];
-			}
-
-			for (x = 0; x != QAS_WINDOW_SIZE; x++) {
-				int16_t mon;
-				int16_t inp;
+			for (unsigned x = 0; x != QAS_MUL_SIZE; x++) {
+				double mon;
+				double inp;
 
 				inp = dsp_get_sample(&qas_read_buffer);
 				mon = dsp_get_monitor_sample(&qas_write_buffer);
@@ -207,76 +202,80 @@ qas_dsp_audio_analyzer(void *arg)
 					mon = inp;
 
 				dsp_rd_audio[x] = inp;
-				dsp_rd_monitor[QAS_MON_SIZE - 2 * QAS_WINDOW_SIZE + x] = mon;
+				dsp_rd_monitor[x] = mon;
 			}
 			atomic_wakeup();
 		} while (qas_freeze);
 		atomic_unlock();
 
+		dsp_rd_mon_filter_index++;
+		if (dsp_rd_mon_filter_index == QAS_MON_COUNT)
+			dsp_rd_mon_filter_index = 0;
+
+		/* convert monitor samples */
+		qas_mul_import_double(dsp_rd_monitor,
+		    dsp_rd_mon_filter[dsp_rd_mon_filter_index], QAS_MUL_SIZE);
+		qas_mul_xform_fwd_double(dsp_rd_mon_filter[dsp_rd_mon_filter_index],
+		    QAS_MUL_SIZE);
+
+		/* convert audio samples */
+		qas_mul_import_double(dsp_rd_audio, dsp_rd_aud_fwd_filter, QAS_MUL_SIZE);
+		qas_mul_xform_fwd_double(dsp_rd_aud_fwd_filter, QAS_MUL_SIZE);
+
+		/* convert reversed audio samples */
+		for (unsigned x = 0; x != QAS_MUL_SIZE / 2; x++) {
+			double temp = dsp_rd_audio[x];
+			dsp_rd_audio[x] = dsp_rd_audio[QAS_MUL_SIZE - 1 - x];
+			dsp_rd_audio[QAS_MUL_SIZE - 1 - x] = temp;
+		}
+		qas_mul_import_double(dsp_rd_audio, dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
+		qas_mul_xform_fwd_double(dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
+
 		memset(dsp_rd_monitor_temp, 0, sizeof(dsp_rd_monitor_temp));
 
-		for (y = 0; y <= (QAS_MON_SIZE - QAS_FET_SIZE + QAS_WINDOW_SIZE);
-		     y += (QAS_FET_SIZE - QAS_WINDOW_SIZE)) {
+		/* compute correlation filter */
+		for (unsigned y = 0; y != QAS_MON_COUNT; y++) {
+			unsigned x = (dsp_rd_mon_filter_index + 1 + y) % QAS_MON_COUNT;
 
-			for (x = 0; x != QAS_WINDOW_SIZE; x++) {
-				dsp_rd_fet_array[x] = dsp_rd_audio[QAS_WINDOW_SIZE - 1 - x];
-				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];
+			for (unsigned z = 0; z != QAS_FILTER_SIZE; z++) {
+				dsp_rd_temp_filter[0][z] = dsp_rd_mon_filter[x][z] *
+				    dsp_rd_aud_rev_filter[z];
 			}
 
-			for (; x != (QAS_FET_SIZE - QAS_WINDOW_SIZE); x++) {
-				dsp_rd_fet_array[x] = 0;
-				dsp_rd_curr_array[x] = dsp_rd_monitor[x + y];
+			/* compute correlation */
+			qas_mul_xform_inv_double(dsp_rd_temp_filter[0], QAS_MUL_SIZE);
+
+			/* re-order vector array */
+			for (unsigned z = 0; z != QAS_FILTER_SIZE; z++) {
+				dsp_rd_temp_filter[1][z] =
+				    dsp_rd_temp_filter[0][qas_mul_context->table[z]];
 			}
 
-			for (; x != QAS_FET_SIZE; x++) {
-				dsp_rd_fet_array[x] = 0;
-				dsp_rd_curr_array[x] = 0;
-			}
+			/* final error correction */
+			qas_mul_xform_inv_double(dsp_rd_temp_filter[1], QAS_MUL_SIZE);
 
-			prescaler = fet_prescaler_s64(dsp_rd_fet_array) *
-			    fet_prescaler_s64(dsp_rd_curr_array);
-
-			fet_16384_64(dsp_rd_fet_array);
-			fet_16384_64(dsp_rd_curr_array);
-			fet_conv_16384_64(dsp_rd_curr_array, dsp_rd_fet_array,
-			    dsp_rd_fet_array);
-			fet_16384_64(dsp_rd_fet_array);
-
-			for (x = 0; x != QAS_FET_SIZE; x++) {
-				dsp_rd_monitor_temp[x + y] += 
-				    fet_to_lin_64(dsp_rd_fet_array[x]) / prescaler;
-			}
+			/* export */
+			qas_mul_export_double(dsp_rd_temp_filter[1],
+			    dsp_rd_monitor_temp + (QAS_MUL_SIZE * y), QAS_MUL_SIZE);
 		}
-
-		for (x = 0; x != QAS_WINDOW_SIZE; x++)
-			dsp_rd_fet_array[x] = dsp_rd_audio[x];
-		for (; x != QAS_FET_SIZE; x++)
-			dsp_rd_fet_array[x] = 0;
-
-		prescaler = fet_prescaler_s64(dsp_rd_fet_array);
-		fet_16384_64(dsp_rd_fet_array);
 
 		atomic_filter_lock();
 		unsigned prev = (qas_power_index + QAS_HISTORY_SIZE - 1) % QAS_HISTORY_SIZE;
-		for (x = 0; x != QAS_BAND_SIZE; x++) {
+		for (unsigned x = 0; x != QAS_BAND_SIZE; x++) {
 			qas_band_power[qas_power_index][x] =
 				qas_band_power[prev][x] * 0.75;
 		}
 
 		qas_block_filter *f;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
-			f->do_block(prescaler, dsp_rd_fet_array, dsp_rd_filtered);
 			double sum = 0;
-			double avg = 0;
-			for (x = 0; x != QAS_WINDOW_SIZE; x++)
-				avg += dsp_rd_filtered[x];
-			avg /= QAS_WINDOW_SIZE;
 
-			for (x = 0; x != QAS_WINDOW_SIZE; x++) {
-				double y = (dsp_rd_filtered[x] - avg);
+			f->do_block(dsp_rd_aud_fwd_filter, dsp_rd_filtered);
+
+			for (unsigned x = 0; x != QAS_MUL_SIZE; x++) {
+				double y = dsp_rd_filtered[x];
 				sum += y * y;
 			}
-
 			f->power[qas_power_index] = sqrt(sum);
 			qas_band_power[qas_power_index][f->band] += sum;
 		}
@@ -284,7 +283,7 @@ qas_dsp_audio_analyzer(void *arg)
 		atomic_filter_unlock();
 
 		atomic_graph_lock();
-		for (x = 0; x != QAS_MON_SIZE; x++) {
+		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
 			qas_graph_data[x] *= (1.0 - 1.0 / 32.0);
 			qas_graph_data[x] += dsp_rd_monitor_temp[x];
 		}
@@ -296,7 +295,7 @@ qas_dsp_audio_analyzer(void *arg)
 void *
 qas_dsp_write_thread(void *)
 {
-	static int16_t buffer[QAS_WINDOW_SIZE];
+	static int16_t buffer[QAS_MUL_SIZE];
 	static char fname[1024];
 	int f = -1;
 	int err;
@@ -342,13 +341,16 @@ qas_dsp_write_thread(void *)
 		if (err)
 			continue;
 
+		if (temp != qas_sample_rate)
+			printf("Cannot set sample rate %d != %d\n", temp, qas_sample_rate);
+
 		while (1) {
 			atomic_lock();
-			while (dsp_read_space(&qas_write_buffer) < QAS_WINDOW_SIZE) {
+			while (dsp_read_space(&qas_write_buffer) < QAS_MUL_SIZE) {
 				atomic_wakeup();
 				atomic_wait();
 			}
-			for (unsigned x = 0; x != QAS_WINDOW_SIZE; x++)
+			for (unsigned x = 0; x != QAS_MUL_SIZE; x++)
 				buffer[x] = dsp_get_sample(&qas_write_buffer);
 
 			if (qas_mute)
@@ -366,7 +368,7 @@ get_odelay:
 			if (err)
 				break;
 
-			if (odly > 4 * QAS_WINDOW_SIZE) {
+			if (odly > 2 * QAS_MUL_SIZE) {
 				usleep(8000);
 				goto get_odelay;
 			}
@@ -381,7 +383,7 @@ get_odelay:
 void *
 qas_dsp_read_thread(void *arg)
 {
-	static int16_t buffer[QAS_WINDOW_SIZE];
+	static int16_t buffer[QAS_MUL_SIZE];
 	static char fname[1024];
 	int f = -1;
 	int err;
@@ -425,6 +427,9 @@ qas_dsp_read_thread(void *arg)
 		err = ioctl(f, SNDCTL_DSP_SPEED, &temp);
 		if (err)
 			continue;
+
+		if (temp != qas_sample_rate)
+			printf("Cannot set sample rate %d != %d\n", temp, qas_sample_rate);
 
 		while (1) {
 			err = read(f, buffer, sizeof(buffer));

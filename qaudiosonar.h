@@ -55,14 +55,19 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 
-#define	QAS_SAMPLE_RATE	48000
-#define	QAS_FET_SIZE	0x4000
-#define	QAS_FET_PRIME	0x42000001LL
-#define	QAS_WINDOW_SIZE ((QAS_FET_SIZE / 2) & ~3)
-#define	QAS_BUFFER_SIZE (2 * QAS_WINDOW_SIZE)	/* samples */
-#define	QAS_MON_SIZE	(4 * QAS_FET_SIZE)
+#define	QAS_SAMPLE_RATE	16000
+#define	QAS_FILTER_SIZE	(3 * 3 * 3 * 3 * 3 * 3 * 3 * 3)
+#define	QAS_MUL_SIZE	(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2)
+#define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_MON_SIZE	((QAS_SAMPLE_RATE / 2) - ((QAS_SAMPLE_RATE / 2) % QAS_MUL_SIZE))
+#define	QAS_MON_COUNT	(QAS_MON_SIZE / QAS_MUL_SIZE)
 #define	QAS_BAND_SIZE	13
-#define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_WINDOW_SIZE)
+#define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
+
+struct qas_mul_double_context {
+	uint32_t table[QAS_FILTER_SIZE];
+	uint32_t offset[QAS_MUL_SIZE];
+};
 
 struct qas_band_info {
 	int64_t power;
@@ -77,15 +82,14 @@ class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
-	void do_block(double, int64_t *, int64_t *);
+	void do_block(const double *, double *);
 	void do_mon_block_in(const int64_t *);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
-	double prescaler;
-	double filter_lin[QAS_FET_SIZE];
-	int64_t filter_fast[QAS_FET_SIZE];
-	int64_t output[2][QAS_FET_SIZE];
+	double filter_lin[QAS_MUL_SIZE];
+	double filter_fast[QAS_FILTER_SIZE];
+	double output[2][2][QAS_FILTER_SIZE];
 	int64_t power[QAS_HISTORY_SIZE];
 	int64_t power_ref;
 	double t_cos[QAS_MON_SIZE];
@@ -267,11 +271,13 @@ void *qas_dsp_write_thread(void *);
 void *qas_dsp_read_thread(void *);
 void qas_dsp_sync(void);
 
-double fet_prescaler_double(double *);
-double fet_prescaler_s64(int64_t *);
-void fet_conv_16384_64(const int64_t *, const int64_t *, int64_t *);
-void fet_16384_64(int64_t *);
-int64_t fet_to_lin_64(int64_t);
+extern struct qas_mul_double_context *qas_mul_context;
+
+struct qas_mul_double_context *qas_mul_double_context_alloc(void);
+void qas_mul_xform_inv_double(double *, uint32_t);
+void qas_mul_xform_fwd_double(double *, uint32_t);
+void qas_mul_import_double(const double *, double *, uint32_t);
+void qas_mul_export_double(const double *, double *, uint32_t);
 
 void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
 

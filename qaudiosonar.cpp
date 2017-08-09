@@ -1021,6 +1021,10 @@ main(int argc, char **argv)
 
 	atomic_init();
 
+	qas_mul_context = qas_mul_double_context_alloc();
+	if (qas_mul_context == NULL)
+		errx(EX_SOFTWARE, "Out of memory");
+
 	pthread_create(&td, NULL, &qas_dsp_audio_producer, NULL);
 	pthread_create(&td, NULL, &qas_dsp_audio_analyzer, NULL);
 	pthread_create(&td, NULL, &qas_dsp_write_thread, NULL);
