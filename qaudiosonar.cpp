@@ -229,10 +229,11 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	QString str;
 	switch (type) {
 	case TYPE_CORR:
-	  str = QString("CORRELATION MAX=%1dB@%2samples;%3ms;%4m")
-	      .arg(10.0 * log(max) / log(10)).arg(QAS_MON_SIZE - 1 - y)
-	      .arg((double)((int)((QAS_MON_SIZE - 1 - y) * 100000 / QAS_SAMPLE_RATE) / 100.0))
-	      .arg((double)((int)((QAS_MON_SIZE - 1 - y) * 340 / QAS_SAMPLE_RATE) / 100.0));
+	  z = QAS_MON_SIZE - 1 - y;
+		str = QString("CORRELATION MAX=%1dB@%2samples;%3ms;%4m")
+		    .arg(10.0 * log(max) / log(10)).arg(z)
+		    .arg((double)((int)((z * 100000) / QAS_SAMPLE_RATE) / 100.0))
+		    .arg((double)((int)((z * 34000) / QAS_SAMPLE_RATE) / 100.0));
 		break;
 	case TYPE_AMP:
 		str = QString("AMPLITUDE MAX=%1dB MIN=%2dB")
