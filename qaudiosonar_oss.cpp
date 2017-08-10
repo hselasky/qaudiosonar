@@ -359,8 +359,10 @@ get_odelay:
 			if (err)
 				break;
 
-			if (odly > (int)QAS_BUFFER_SIZE) {
-				usleep(8000);
+			if (odly > (int)(2 * QAS_DSP_SIZE)) {
+				usleep(1000 *
+				    ((1000 * QAS_DSP_SIZE + QAS_SAMPLE_RATE - 1) /
+				     QAS_SAMPLE_RATE));
 				goto get_odelay;
 			}
 			err = write(f, buffer, sizeof(buffer));
