@@ -56,13 +56,19 @@
 #include <QPlainTextEdit>
 
 #define	QAS_SAMPLE_RATE	16000
-#define	QAS_FILTER_SIZE	(3 * 3 * 3 * 3 * 3 * 3 * 3 * 3)
-#define	QAS_MUL_SIZE	(2 * 2 * 2 * 2 * 2 * 2 * 2 * 2)
-#define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_MUL_ORDER	8
+#define	QAS_FILTER_SIZE	(3 * 3 * 3 * 3 * 3 * 3 * 3 * 3) /* samples */
+#define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
+#define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_MON_SIZE	((QAS_SAMPLE_RATE / 2) - ((QAS_SAMPLE_RATE / 2) % QAS_MUL_SIZE))
 #define	QAS_MON_COUNT	(QAS_MON_SIZE / QAS_MUL_SIZE)
 #define	QAS_BAND_SIZE	13
 #define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
+
+#if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
+#error "Misconfiguration"
+#endif
 
 struct qas_mul_double_context {
 	uint32_t table[QAS_FILTER_SIZE];
@@ -82,22 +88,19 @@ class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
-	void do_block(const double *, double *);
 	void do_mon_block_in(const int64_t *);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
-	double filter_lin[QAS_MUL_SIZE];
-	double filter_fast[QAS_FILTER_SIZE];
-	double output[2][2][QAS_FILTER_SIZE];
 	int64_t power[QAS_HISTORY_SIZE];
 	int64_t power_ref;
 	double t_cos[QAS_MON_SIZE];
 	double t_sin[QAS_MON_SIZE];
 	double t_amp;
+	double t_phase;
 	double freq;
 	uint32_t tag;
-	uint8_t toggle;
+	uint8_t iso_index;
 	uint8_t band;
 };
 
@@ -217,7 +220,6 @@ public slots:
 	void handle_apply();
 	void handle_reset();
 	void handle_del_all();
-	void handle_add_iso();
 	void handle_add_log();
 	void handle_add_lin();
 	void handle_add_piano();
@@ -246,7 +248,7 @@ extern int qas_mute;
 extern int qas_noise_type;
 extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
-extern int64_t qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
+extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern unsigned qas_power_index;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);

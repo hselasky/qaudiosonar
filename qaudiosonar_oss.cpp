@@ -36,7 +36,7 @@ struct dsp_buffer qas_write_buffer;
 char	dsp_read_device[1024];
 char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
-int64_t qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
+double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -177,8 +177,7 @@ qas_dsp_audio_analyzer(void *arg)
 	static double dsp_rd_aud_fwd_filter[QAS_FILTER_SIZE];
 	static double dsp_rd_aud_rev_filter[QAS_FILTER_SIZE];
 	static double dsp_rd_temp_filter[2][QAS_FILTER_SIZE];
-	static double dsp_rd_monitor_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
-	static double dsp_rd_filtered[QAS_MUL_SIZE];
+	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
 
 	while (1) {
@@ -231,7 +230,8 @@ qas_dsp_audio_analyzer(void *arg)
 		qas_mul_import_double(dsp_rd_audio, dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
 		qas_mul_xform_fwd_double(dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
 
-		memset(dsp_rd_monitor_temp, 0, sizeof(dsp_rd_monitor_temp));
+		/* clear correlation buffer */
+		memset(dsp_rd_correlation_temp, 0, sizeof(dsp_rd_correlation_temp));
 
 		/* compute correlation filter */
 		for (unsigned y = 0; y != QAS_MON_COUNT; y++) {
@@ -256,38 +256,27 @@ qas_dsp_audio_analyzer(void *arg)
 
 			/* export */
 			qas_mul_export_double(dsp_rd_temp_filter[1],
-			    dsp_rd_monitor_temp + (QAS_MUL_SIZE * y), QAS_MUL_SIZE);
+			    dsp_rd_correlation_temp + (QAS_MUL_SIZE * y), QAS_MUL_SIZE);
 		}
-
-		atomic_filter_lock();
-		unsigned prev = (qas_power_index + QAS_HISTORY_SIZE - 1) % QAS_HISTORY_SIZE;
-		for (unsigned x = 0; x != QAS_BAND_SIZE; x++) {
-			qas_band_power[qas_power_index][x] =
-				qas_band_power[prev][x] * 0.75;
-		}
-
-		qas_block_filter *f;
-		TAILQ_FOREACH(f, &qas_filter_head, entry) {
-			double sum = 0;
-
-			f->do_block(dsp_rd_aud_fwd_filter, dsp_rd_filtered);
-
-			for (unsigned x = 0; x != QAS_MUL_SIZE; x++) {
-				double y = dsp_rd_filtered[x];
-				sum += y * y;
-			}
-			f->power[qas_power_index] = sqrt(sum);
-			qas_band_power[qas_power_index][f->band] += sum;
-		}
-		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
-		atomic_filter_unlock();
 
 		atomic_graph_lock();
 		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
 			qas_graph_data[x] *= (1.0 - 1.0 / 32.0);
-			qas_graph_data[x] += dsp_rd_monitor_temp[x];
+			qas_graph_data[x] += dsp_rd_correlation_temp[x];
 		}
 		atomic_graph_unlock();
+
+		atomic_filter_lock();
+		memset(qas_band_power[qas_power_index], 0, sizeof(qas_band_power[qas_power_index]));
+
+		qas_block_filter *f;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			f->do_mon_block_in(qas_graph_data);
+			f->power[qas_power_index] = f->t_amp;
+			qas_band_power[qas_power_index][f->band] += f->t_amp;
+		}
+		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
+		atomic_filter_unlock();
 	}
 	return (0);
 }
@@ -295,7 +284,7 @@ qas_dsp_audio_analyzer(void *arg)
 void *
 qas_dsp_write_thread(void *)
 {
-	static int16_t buffer[QAS_MUL_SIZE];
+	static int16_t buffer[QAS_DSP_SIZE];
 	static char fname[1024];
 	int f = -1;
 	int err;
@@ -338,19 +327,21 @@ qas_dsp_write_thread(void *)
 
 		temp = qas_sample_rate;
 		err = ioctl(f, SNDCTL_DSP_SPEED, &temp);
+		if (err || temp != qas_sample_rate)
+			continue;
+
+		temp = (QAS_MUL_ORDER + 1) | ((QAS_BUFFER_SIZE / QAS_MUL_SIZE) << 16);
+		err = ioctl(f, SNDCTL_DSP_SETFRAGMENT, &temp);
 		if (err)
 			continue;
 
-		if (temp != qas_sample_rate)
-			printf("Cannot set sample rate %d != %d\n", temp, qas_sample_rate);
-
 		while (1) {
 			atomic_lock();
-			while (dsp_read_space(&qas_write_buffer) < QAS_MUL_SIZE) {
+			while (dsp_read_space(&qas_write_buffer) < QAS_DSP_SIZE) {
 				atomic_wakeup();
 				atomic_wait();
 			}
-			for (unsigned x = 0; x != QAS_MUL_SIZE; x++)
+			for (unsigned x = 0; x != QAS_DSP_SIZE; x++)
 				buffer[x] = dsp_get_sample(&qas_write_buffer);
 
 			if (qas_mute)
@@ -368,7 +359,7 @@ get_odelay:
 			if (err)
 				break;
 
-			if (odly > 2 * QAS_MUL_SIZE) {
+			if (odly > (int)QAS_BUFFER_SIZE) {
 				usleep(8000);
 				goto get_odelay;
 			}
@@ -383,7 +374,7 @@ get_odelay:
 void *
 qas_dsp_read_thread(void *arg)
 {
-	static int16_t buffer[QAS_MUL_SIZE];
+	static int16_t buffer[QAS_DSP_SIZE];
 	static char fname[1024];
 	int f = -1;
 	int err;
@@ -425,11 +416,13 @@ qas_dsp_read_thread(void *arg)
 
 		temp = qas_sample_rate;
 		err = ioctl(f, SNDCTL_DSP_SPEED, &temp);
-		if (err)
+		if (err || temp != qas_sample_rate)
 			continue;
 
-		if (temp != qas_sample_rate)
-			printf("Cannot set sample rate %d != %d\n", temp, qas_sample_rate);
+		temp = (QAS_MUL_ORDER + 1) | ((QAS_BUFFER_SIZE / QAS_MUL_SIZE) << 16);
+		err = ioctl(f, SNDCTL_DSP_SETFRAGMENT, &temp);
+		if (err)
+			continue;
 
 		while (1) {
 			err = read(f, buffer, sizeof(buffer));
