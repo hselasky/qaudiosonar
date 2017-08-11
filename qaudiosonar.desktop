@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=Quick Audio Sonar
+Comment=Advanced audio analysis tool
+Exec=qaudiosonar
+Icon=qaudiosonar
+Categories=AudioVideo;Audio;
+Terminal=false
+Type=Application
+

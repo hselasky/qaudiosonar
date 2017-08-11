@@ -19,3 +19,20 @@ RESOURCES	+= qaudiosonar.qrc
 TARGET          = qaudiosonar
 QTDIR_build:REQUIRES="contains(QT_CONFIG, full-config)"
 unix:LIBS      += -lpthread -lm
+
+isEmpty(PREFIX) {
+PREFIX		= /usr/local
+}
+
+target.path	= $${PREFIX}/bin
+INSTALLS	+= target
+
+isEmpty(HAVE_BUNDLE_ICONS) {
+  icons.path	= $${PREFIX}/share/pixmaps
+  icons.files	= qaudiosonar.png
+  INSTALLS	+= icons
+}
+
+desktop.path	= $${PREFIX}/share/applications
+desktop.files	= qaudiosonar.desktop
+INSTALLS	+= desktop
