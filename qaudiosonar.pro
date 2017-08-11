@@ -5,8 +5,12 @@ QT		+= core gui network
 greaterThan(QT_MAJOR_VERSION, 4) {
 QT		+= widgets
 }
-HEADERS         = qaudiosonar.h
+HEADERS         += qaudiosonar.h
+HEADERS         += qaudiosonar_button.h
+HEADERS         += qaudiosonar_buttonmap.h
 SOURCES         += qaudiosonar.cpp
+SOURCES		+= qaudiosonar_button.cpp
+SOURCES		+= qaudiosonar_buttonmap.cpp
 SOURCES		+= qaudiosonar_mul.cpp
 SOURCES		+= qaudiosonar_filter.cpp
 SOURCES		+= qaudiosonar_oss.cpp

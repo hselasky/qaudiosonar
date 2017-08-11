@@ -25,6 +25,8 @@
 
 #include "qaudiosonar.h"
 
+#include "qaudiosonar_buttonmap.h"
+
 static pthread_mutex_t atomic_mtx;
 static pthread_mutex_t atomic_graph;
 static pthread_mutex_t atomic_filter;
@@ -94,6 +96,77 @@ void
 atomic_wakeup(void)
 {
 	pthread_cond_broadcast(&atomic_cv);
+}
+
+QasConfig :: QasConfig(QasMainWindow *_mw)
+{
+	mw = _mw;
+
+	gl = new QGridLayout(this);
+
+	map_source_0 = new QasButtonMap("Main input channel\0"
+					"INPUT-0\0" "INPUT-1\0"
+					"OUTPUT-0\0" "OUTPUT-1\0", 4, 4);
+	map_source_1 = new QasButtonMap("Correlation input channel\0"
+					"INPUT-0\0" "INPUT-1\0"
+					"OUTPUT-0\0" "OUTPUT-1\0", 4, 4);
+	map_output_0 = new QasButtonMap("Output for channel 0\0"
+					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0", 3, 3);
+	map_output_1 = new QasButtonMap("Output for channel 1\0"
+					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0", 3, 3);
+
+	connect(map_source_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_0(int)));
+	connect(map_source_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_1(int)));
+	connect(map_output_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_0(int)));
+	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
+	
+	gl->addWidget(map_source_0, 0,0,1,1);
+	gl->addWidget(map_source_1, 1,0,1,1);
+	gl->addWidget(map_output_0, 2,0,1,1);
+	gl->addWidget(map_output_1, 3,0,1,1);
+
+	setWindowTitle(tr("Quick Audio Sonar v1.1"));
+	setWindowIcon(QIcon(":/qaudiosonar.png"));
+}
+
+void
+QasConfig :: handle_source_0(int _value)
+{
+	atomic_lock();
+	qas_source_0 = _value;
+	atomic_unlock();
+
+	mw->handle_reset();
+}
+
+void
+QasConfig :: handle_source_1(int _value)
+{
+	atomic_lock();
+	qas_source_1 = _value;
+	atomic_unlock();
+
+	mw->handle_reset();
+}
+
+void
+QasConfig :: handle_output_0(int _value)
+{
+	atomic_lock();
+	qas_output_0 = _value;
+	atomic_unlock();
+
+	mw->handle_reset();
+}
+
+void
+QasConfig :: handle_output_1(int _value)
+{
+	atomic_lock();
+	qas_output_1 = _value;
+	atomic_unlock();
+
+	mw->handle_reset();
 }
 
 QasBand :: QasBand(QasMainWindow *_mw)
@@ -626,6 +699,7 @@ QasMainWindow :: QasMainWindow()
 	QPushButton *pb;
 
 	qr = new QasRecord();
+	qc = new QasConfig(this);
 
 	gl = new QGridLayout(this);
 
@@ -678,7 +752,11 @@ QasMainWindow :: QasMainWindow()
 	pb = new QPushButton(tr("AddPiano"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
 	gl->addWidget(pb, 0,7,1,1);
-	
+
+	pb = new QPushButton(tr("ShowConfig"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_config()));
+	gl->addWidget(pb, 0,8,1,1);
+       
 	pb = new QPushButton(tr("DelAll"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_del_all()));
 	gl->addWidget(pb, 1,3,1,1);
@@ -687,17 +765,9 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_set_profile()));
 	gl->addWidget(pb, 1,4,1,1);
 
-	pb = new QPushButton(tr("MuteTog"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_mute()));
-	gl->addWidget(pb, 1,5,1,1);
-
 	pb = new QPushButton(tr("TogFrz"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 1,6,1,1);
-
-	pb = new QPushButton(tr("TogNoise"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_noise()));
-	gl->addWidget(pb, 1,7,1,1);
 
 	pb = new QPushButton(tr("ShowRecord"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_show_record()));
@@ -710,7 +780,7 @@ QasMainWindow :: QasMainWindow()
 
 	gl->setRowStretch(1,1);
 
-	setWindowTitle(tr("Quick Audio Sonar v1.0"));
+	setWindowTitle(tr("Quick Audio Sonar v1.1"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
 }
 
@@ -744,7 +814,14 @@ QasMainWindow :: handle_reset()
 
 	atomic_filter_lock();
 	memset(qas_band_power, 0, sizeof(qas_band_power));
+	memset(dsp_rd_mon_filter, 0, sizeof(dsp_rd_mon_filter));
 	atomic_filter_unlock();
+}
+
+void
+QasMainWindow :: handle_config()
+{
+	qc->show();
 }
 
 void
@@ -955,26 +1032,10 @@ QasMainWindow :: handle_set_profile()
 }
 
 void
-QasMainWindow :: handle_tog_mute()
-{
-	atomic_lock();
-	qas_mute = (qas_mute + 1) % 4;
-	atomic_unlock();
-}
-
-void
 QasMainWindow :: handle_tog_freeze()
 {
 	atomic_lock();
 	qas_freeze = !qas_freeze;
-	atomic_unlock();
-}
-
-void
-QasMainWindow :: handle_tog_noise()
-{
-	atomic_lock();
-	qas_noise_type = !qas_noise_type;
 	atomic_unlock();
 }
 

@@ -67,7 +67,7 @@
 #define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
 
 #if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
-#error "Misconfiguration"
+#error "Invalid parameters"
 #endif
 
 struct qas_mul_double_context {
@@ -105,6 +105,29 @@ public:
 };
 
 class QasMainWindow;
+class QasButtonMap;
+class QasConfig : public QWidget {
+	Q_OBJECT
+public:
+	QasConfig(QasMainWindow *);
+	~QasConfig() { };
+
+	QasMainWindow *mw;
+
+	QGridLayout *gl;
+
+	QasButtonMap *map_source_0;
+	QasButtonMap *map_source_1;
+	QasButtonMap *map_output_0;
+	QasButtonMap *map_output_1;
+
+public slots:
+	void handle_source_0(int);
+	void handle_source_1(int);
+	void handle_output_0(int);
+	void handle_output_1(int);
+};
+
 class QasBand : public QWidget {
 	Q_OBJECT
 public:
@@ -206,6 +229,7 @@ public:
 	void update_sb();
 	void update_qr();
 
+	QasConfig *qc;
 	QasRecord *qr;
 	QGridLayout *gl;
 	QScrollBar *sb;
@@ -223,12 +247,11 @@ public slots:
 	void handle_add_log();
 	void handle_add_lin();
 	void handle_add_piano();
-	void handle_tog_mute();
 	void handle_tog_freeze();
-	void handle_tog_noise();
 	void handle_set_profile();
 	void handle_slider(int);
 	void handle_show_record();
+	void handle_config();
 };
 
 struct dsp_buffer {
@@ -239,16 +262,19 @@ struct dsp_buffer {
 };
 
 extern qas_block_filter_head_t qas_filter_head;
-extern struct dsp_buffer qas_read_buffer;
-extern struct dsp_buffer qas_write_buffer;
+extern struct dsp_buffer qas_read_buffer[2];
+extern struct dsp_buffer qas_write_buffer[2];
 extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
 extern int qas_sample_rate;
-extern int qas_mute;
-extern int qas_noise_type;
+extern int qas_source_0;
+extern int qas_source_1;
+extern int qas_output_0;
+extern int qas_output_1;
 extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
 extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
+extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_FILTER_SIZE];
 extern unsigned qas_power_index;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
