@@ -1052,7 +1052,7 @@ QasMainWindow :: update_qr()
 	num = 0;
 	TAILQ_FOREACH(f, &qas_filter_head, entry)
 		num++;
-	while ((qas_last_index - qas_power_index) % QAS_HISTORY_SIZE) {
+	while ((QAS_HISTORY_SIZE + qas_power_index - qas_last_index) % QAS_HISTORY_SIZE) {
 		QasRecordEntry *rec = new QasRecordEntry(num);
 		num = 0;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
@@ -1067,7 +1067,7 @@ QasMainWindow :: update_qr()
 			rec->pdesc[num] = str;
 			num++;
 		}
-		qas_last_index++;
+		qas_last_index = (qas_last_index + 1) % QAS_HISTORY_SIZE;
 		qr->insert_entry(rec);
 	}
 	atomic_filter_unlock();
