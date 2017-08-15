@@ -36,7 +36,6 @@ QasRecord :: QasRecord() : QWidget()
 
 	pSpin = new QSpinBox();
 	pSpin->setRange(10,99);
-	connect(pSpin, SIGNAL(valueChanged(int)), this, SLOT(update()));
 
 	pLabel = new QLineEdit();
 	pEdit = new QPlainTextEdit();
@@ -52,6 +51,7 @@ QasRecord :: QasRecord() : QWidget()
 	pSB->setValue(0);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_slider(int)));
 	pShow = new QasRecordShow(this);
+	connect(pSpin, SIGNAL(valueChanged(int)), pShow, SLOT(update()));
 
 	gl->addWidget(pLabel, 0,3,1,1);
 	gl->addWidget(pSpin, 0,2,1,1);
@@ -106,6 +106,7 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 	float w = width();
 	float h = height();
 	float dw;
+	float dh;
 	float y = 0;
 
 	TAILQ_FOREACH(entry, &qr->head, entry) {
@@ -114,6 +115,7 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 	}
 
 	dw = w / (float)max;
+	dh = 16;
 
 	TAILQ_FOREACH(entry, &qr->head, entry) {
 		if (num == off)
@@ -132,7 +134,7 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 	paint.setBrush(white);
 	paint.drawRect(QRectF(0,0,w,h));
 
-	for (y = 0, entry = start; entry != 0 && y < h; y += dw,
+	for (y = 0, entry = start; entry != 0 && y < h; y += dh,
 	       entry = TAILQ_NEXT(entry, entry)) {
 		int64_t maxpower = 1;
 
@@ -146,7 +148,7 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 		}
 
 		for (unsigned int x = 0; x != entry->num; x++) {
-			QRectF rect(dw * x, y, dw, dw);
+			QRectF rect(dw * x, y, dw, dh);
 			int64_t power = entry->pvalue[x];
 			if (power < 0)
 				power = 0;
@@ -163,6 +165,9 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 						str += extractScore(entry->pdesc[z]);
 					}
 				}
+				str += " /* ";
+				str += extractScore(entry->pdesc[x]);
+				str += " */ ";
 				qr->pLabel->setText(str);
 				gradient = QColor(0, 0, 0);
 			} else {
@@ -174,7 +179,7 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 		}
 
 		QFont fnt = paint.font();
-		fnt.setPixelSize(dw);
+		fnt.setPixelSize(dh);
 		paint.setFont(fnt);
 		paint.setPen(QPen(black,0));
 		paint.setBrush(black);
@@ -274,11 +279,43 @@ QasRecord :: handle_slider(int)
 	pShow->update();
 }
 
+static int
+do_accumulate_entry(const QasRecordEntry &a, const QasRecordEntry &b)
+{
+	size_t x, y, z;
+
+	if (a.num != b.num)
+		return (0);
+
+	for (x = y = 0; x != b.num; x++) {
+		if (b.pvalue[x] >= b.pvalue[y])
+			y = x;
+	}
+	
+	for (x = z = 0; x != a.num; x++) {
+		if (a.pvalue[x] >= a.pvalue[z])
+			z = x;
+	}
+	return (y == z);
+}
+
 void
 QasRecord :: insert_entry(QasRecordEntry *entry)
 {
+	QasRecordEntry *first;
+
 	if (do_record == 0) {
 		delete entry;
+		return;
+	}
+	first = TAILQ_FIRST(&head);
+	if (first != 0 && do_accumulate_entry(*first, *entry) != 0) {
+		for (size_t x = 0; x != first->num; x++) {
+			first->pvalue[x] += entry->pvalue[x];
+			first->pvalue[x] /= 2.0;
+		}
+		delete entry;
+		update();
 		return;
 	}
 	TAILQ_INSERT_HEAD(&head, entry, entry);
