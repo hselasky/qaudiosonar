@@ -311,8 +311,8 @@ QasRecord :: insert_entry(QasRecordEntry *entry)
 	first = TAILQ_FIRST(&head);
 	if (first != 0 && do_accumulate_entry(*first, *entry) != 0) {
 		for (size_t x = 0; x != first->num; x++) {
-			first->pvalue[x] += entry->pvalue[x];
-			first->pvalue[x] /= 2.0;
+			if (entry->pvalue[x] > first->pvalue[x])
+				first->pvalue[x] = entry->pvalue[x];
 		}
 		delete entry;
 		update();
