@@ -34,7 +34,11 @@ QasRecord :: QasRecord() : QWidget()
 	
 	gl = new QGridLayout(this);
 
-	pLabel = new QLabel();
+	pSpin = new QSpinBox();
+	pSpin->setRange(10,99);
+	connect(pSpin, SIGNAL(valueChanged(int)), this, SLOT(update()));
+
+	pLabel = new QLineEdit();
 	pEdit = new QPlainTextEdit();
 	pButReset = new QPushButton(tr("Reset REC"));
 	connect(pButReset, SIGNAL(released()), this, SLOT(handle_reset()));
@@ -49,17 +53,18 @@ QasRecord :: QasRecord() : QWidget()
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_slider(int)));
 	pShow = new QasRecordShow(this);
 
-	gl->addWidget(pLabel, 0,2,1,1, Qt::AlignVCenter|Qt::AlignHCenter);
-	gl->addWidget(pButReset, 1,2,1,1);
-	gl->addWidget(pButToggle, 2,2,1,1);	
-	gl->addWidget(pButInsert, 3,2,1,1);
-	gl->addWidget(pEdit, 4,2,1,1);
+	gl->addWidget(pLabel, 0,3,1,1);
+	gl->addWidget(pSpin, 0,2,1,1);
+	gl->addWidget(pButReset, 1,2,1,2);
+	gl->addWidget(pButToggle, 2,2,1,2);
+	gl->addWidget(pButInsert, 3,2,1,2);
+	gl->addWidget(pEdit, 4,2,1,2);
 	gl->addWidget(pSB, 0,1,5,1);
 	gl->addWidget(pShow, 0,0,5,1);
 	gl->setRowStretch(4,1);
 	gl->setColumnStretch(0,1);
 
-	setWindowTitle(tr("Quick Audio Sonar v1.0"));
+	setWindowTitle(tr("Quick Audio Sonar v1.1"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
 }
 
@@ -80,6 +85,16 @@ QasRecordShow :: QasRecordShow(QasRecord *qr) :
 	setFocusPolicy(Qt::ClickFocus);
 }
 
+static QString
+extractScore(const QString &str)
+{
+	int index = str.indexOf("-");
+	if (index < 0)
+		return ("");
+	else
+		return (str.mid(index + 2));
+}
+
 void
 QasRecordShow :: paintEvent(QPaintEvent *event)
 {
@@ -87,9 +102,6 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 	QasRecordEntry *start;
 	size_t num = 0;
 	size_t off = qr->pSB->value();
-	int64_t maxpower = 1;
-	int64_t sum = 0;
-	int64_t nsum = 0;
 	size_t max = 1;
 	float w = width();
 	float h = height();
@@ -122,39 +134,40 @@ QasRecordShow :: paintEvent(QPaintEvent *event)
 
 	for (y = 0, entry = start; entry != 0 && y < h; y += dw,
 	       entry = TAILQ_NEXT(entry, entry)) {
-		for (unsigned int x = 0; x != entry->num; x++) {
-			sum += entry->pvalue[x];
-			nsum ++;
-		}
-	}
+		int64_t maxpower = 1;
 
-	if (nsum != 0)
-		sum /= nsum;
-	
-	for (y = 0, entry = start; entry != 0 && y < h; y += dw,
-	       entry = TAILQ_NEXT(entry, entry)) {
+		if (entry->num == 0)
+			continue;
+
 		for (unsigned int x = 0; x != entry->num; x++) {
-			int64_t power = entry->pvalue[x] - sum;
+			int64_t power = entry->pvalue[x];
 			if (power > maxpower)
 				maxpower = power;
 		}
-	}
 
-	for (y = 0, entry = start; entry != 0 && y < h; y += dw,
-	       entry = TAILQ_NEXT(entry, entry)) {
 		for (unsigned int x = 0; x != entry->num; x++) {
 			QRectF rect(dw * x, y, dw, dw);
-			int64_t power = (entry->pvalue[x] - sum);
+			int64_t power = entry->pvalue[x];
 			if (power < 0)
 				power = 0;
 			else
 				power = (power * 255ULL) / maxpower;
 			QColor gradient;
 			if (rect.contains(qr->select)) {
+				int64_t limit = (10 * maxpower) / qr->pSpin->value();
+				QString str;
+				for (unsigned z = 0; z != entry->num; z++) {
+					if (entry->pvalue[z] >= limit) {
+						if (!str.isEmpty())
+							str += " ";
+						str += extractScore(entry->pdesc[z]);
+					}
+				}
+				qr->pLabel->setText(str);
 				gradient = QColor(0, 0, 0);
-				qr->pLabel->setText(entry->pdesc[x]);
-			} else
+			} else {
 				gradient = QColor(power, 255 - power, 0);
+			}
 			paint.setPen(QPen(gradient,0));
 			paint.setBrush(gradient);
 			paint.drawRect(rect);

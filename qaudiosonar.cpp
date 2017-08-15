@@ -364,18 +364,6 @@ drawImage(QPainter &paint, int64_t *temp,
 	}
 }
 
-static double
-qas_to_decibel(double x)
-{
-	if (x == 0)
-		;
-	else if (x < 0)
-		x = -1000.0 * log(-x) / log(10);
-	else
-		x = 1000.0 * log(x) / log(10);
-	return (x);
-}
-
 static const QString
 qas_band_to_key(uint8_t key)
 {
@@ -655,7 +643,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		if (qas_freq_table[x] >= 1000.0)
 			str = QString("%1K").arg(qas_freq_table[x] / 1000.0);
 		else
-			str = QString("%1Hz").arg(qas_freq_table[x]);
+			str = QString("%1").arg(qas_freq_table[x]);
 		paint.drawText(QPoint(iso_xpos[x + 1] / iso_count[x + 1], ih - 2.0), str);
 	}
 
@@ -738,7 +726,7 @@ QasMainWindow :: QasMainWindow()
 	spn = new QSpinBox();
 	spn->setRange(1,1024);
 	spn->setSuffix(tr(" bands"));
-	spn->setValue(84);
+	spn->setValue(120);
 	gl->addWidget(spn, 1,2,1,1);
 	
 	pb = new QPushButton(tr("AddLog"));
@@ -917,9 +905,11 @@ void
 QasMainWindow :: handle_add_piano()
 {
 	qas_block_filter *f;
+	QString str;
 	unsigned max_bands = spn->value();
 	double max_width;
 	unsigned x;
+	int y;
 	double cf;
 	double lf;
 	double hf;
@@ -931,9 +921,10 @@ QasMainWindow :: handle_add_piano()
 	pf = pow(2.0, 1.0 / 12.0);
 
 	x = max_bands;
-	lf = 440.0 * pow(pf, (int)x - 1 - (int)max_bands / 2);
-	cf = 440.0 * pow(pf, (int)x - (int)max_bands / 2);
-	hf = 440.0 * pow(pf, (int)x + 1 - (int)max_bands / 2);
+	y = x - (max_bands / 2);
+	lf = 440.0 * pow(pf, y - 1);
+	cf = 440.0 * pow(pf, y);
+	hf = 440.0 * pow(pf, y + 1);
 
 	lf = (lf + cf) / 2.0;
 	hf = (hf + cf) / 2.0;
@@ -941,60 +932,64 @@ QasMainWindow :: handle_add_piano()
 	max_width = (hf - lf);
 	
 	for (x = 0; x != max_bands; x++) {
-		lf = 440.0 * pow(pf, (int)x - 1 - (int)max_bands / 2);
-		cf = 440.0 * pow(pf, (int)x - (int)max_bands / 2);
-		hf = 440.0 * pow(pf, (int)x + 1 - (int)max_bands / 2);
+	  	y = x - (max_bands / 2);
+		lf = 440.0 * pow(pf, y - 1);
+		cf = 440.0 * pow(pf, y);
+		hf = 440.0 * pow(pf, y + 1);
 
 		lf = (lf + cf) / 2.0;
 		hf = (hf + cf) / 2.0;
 
 		f = new qas_block_filter(sqrt(max_width / (hf - lf)), lf, hf);
 
-		int key = (12 + x - ((max_bands / 2) % 12) + 9) % 12;
+		int key = (y + 9 + (5 * 12)) % 12;
+		int octave = (y + 9 + (5 * 12)) / 12;
 
 		f->band = key + 1;
 		f->iso_index = qas_find_iso(cf);
 
 		switch (key) {
 		case 9:
-			f->descr = new QString(" - A");
+			str = QString(" - A%1").arg(octave);
 			break;
 		case 11:
-			f->descr = new QString(" - H");
+			str = QString(" - H%1").arg(octave);
 			break;
 		case 0:
-			f->descr = new QString(" - C");
+			str = QString(" - C%1").arg(octave);
 			break;
 		case 2:
-			f->descr = new QString(" - D");
+			str = QString(" - D%1").arg(octave);
 			break;
 		case 4:
-			f->descr = new QString(" - E");
+			str = QString(" - E%1").arg(octave);
 			break;
 		case 5:
-			f->descr = new QString(" - F");
+			str = QString(" - F%1").arg(octave);
 			break;
 		case 7:
-			f->descr = new QString(" - G");
+			str = QString(" - G%1").arg(octave);
 			break;
 		case 10:
-			f->descr = new QString(" - Hb");
+			str = QString(" - H%1B").arg(octave);
 			break;
 		case 8:
-			f->descr = new QString(" - Ab");
+			str = QString(" - A%1B").arg(octave);
 			break;
 		case 6:
-			f->descr = new QString(" - Gb");
+			str = QString(" - G%1B").arg(octave);
 			break;
 		case 3:
-			f->descr = new QString(" - Eb");
+			str = QString(" - E%1B").arg(octave);
 			break;
 		case 1:
-			f->descr = new QString(" - Db");
+			str = QString(" - D%1B").arg(octave);
 			break;
 		default:
+			str = "";
 			break;
 		}
+		f->descr = new QString(str);
 		qas_queue_block_filter(f, &qas_filter_head);
 	}
 	update_sb();
@@ -1062,9 +1057,9 @@ QasMainWindow :: update_qr()
 		num = 0;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			QString str;
-			power = qas_to_decibel(f->power[(QAS_HISTORY_SIZE - 1 +
-			    qas_last_index) % QAS_HISTORY_SIZE]) -
-			    qas_to_decibel(f->power_ref);
+			power = f->power[(QAS_HISTORY_SIZE - 1 +
+			    qas_last_index) % QAS_HISTORY_SIZE] -
+			    f->power_ref;
 			rec->pvalue[num] = power;
 			str = QString("%1 Hz").arg((double)(int)(2.0 * f->freq) / 2.0);
 			if (f->descr != 0)

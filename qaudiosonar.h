@@ -208,8 +208,9 @@ public:
 	QPushButton *pButToggle;
 	QPushButton *pButInsert;
 	QScrollBar *pSB;
+	QSpinBox *pSpin;
 	QasRecordShow *pShow;
-	QLabel *pLabel;
+	QLineEdit *pLabel;
 	int do_record;
 
 	void insert_entry(QasRecordEntry *);

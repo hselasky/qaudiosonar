@@ -58,7 +58,7 @@ qas_block_filter :: do_mon_block_in(const int64_t *output_lin)
 	}
 
 	atomic_lock();
-	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in);
+	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in) / (double)QAS_MON_SIZE;
 	t_phase = atan(s_sin_in / s_cos_in);
 	atomic_unlock();
 }
