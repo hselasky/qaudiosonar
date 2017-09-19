@@ -134,7 +134,7 @@ qas_white_noise(void)
 
 	noise_rem = noise_rem * 1103515245 + 12345;
 
-	temp = noise_rem & 0xFFFFFF;
+	temp = noise_rem >> 8;
 
 	/* unsigned to signed conversion */
 
@@ -155,8 +155,8 @@ qas_dsp_audio_producer(void *arg)
 		       dsp_write_monitor_space(&qas_write_buffer[1]) < QAS_DSP_SIZE)
 			atomic_wait();
 		for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-			buffer[1][x] = qas_brown_noise();
-			buffer[2][x] = qas_white_noise();
+			buffer[1][x] = qas_brown_noise() >> 10;
+			buffer[2][x] = qas_white_noise() >> 10;
 
 			dsp_put_sample(&qas_write_buffer[0], buffer[qas_output_0][x]);
 			dsp_put_sample(&qas_write_buffer[1], buffer[qas_output_1][x]);
