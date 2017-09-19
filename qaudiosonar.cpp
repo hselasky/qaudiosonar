@@ -221,17 +221,14 @@ qas_low_pass(double freq, double *factor, size_t window_size)
 {
 	int wh = window_size / 2;
 	int x;
-	int z;
 
-	freq /= QAS_SAMPLE_RATE;
-	freq *= wh;
-
-	z = wh;
+	freq /= (double)QAS_SAMPLE_RATE;
+	freq *= (double)wh;
 
 	factor[wh] += (2.0 * freq) / ((double)wh);
 	freq *= (2.0 * M_PI) / ((double)wh);
 
-	for (x = -z+1; x < z; x++) {
+	for (x = -wh+1; x < wh; x++) {
 		if (x == 0)
 			continue;
 		factor[x + wh] +=
