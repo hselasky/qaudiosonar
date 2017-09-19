@@ -23,198 +23,154 @@
  * SUCH DAMAGE.
  */
 
+#include <stdint.h>
+#include <string.h>
+
 #include "qaudiosonar.h"
 
-struct qas_mul_double_context *qas_mul_context;
+#ifndef QAS_X3_LOG2_COMBA
+#define	QAS_X3_LOG2_COMBA 5
+#endif
 
-static uint8_t
-qas_sumbits32(uint32_t val)
-{
-	val = ((val & (1U * 0xAAAAAAAAU)) / 2U) + (val & (1U * 0x55555555U));
-	val = ((val & (3U * 0x44444444U)) / 4U) + (val & (3U * 0x11111111U));
-	val = ((val & (15U * 0x10101010U)) / 16U) + (val & (15U * 0x01010101U));
-	val += val >> 8;
-	val += val >> 16;
-	return (val & 63);
-}
+#if (QAS_X3_LOG2_COMBA < 2)
+#error "QAS_X3_LOG2_COMBA must be greater than 1"
+#endif
 
+struct qas_x3_input_double {
+	double	a;
+	double	b;
+	size_t	toggle;
+} __aligned(32);
+
+/*
+ * <input size> = "stride"
+ * <output size> = 2 * "stride"
+ */
 static void
-qas_mul_xform_inv_sub_double(double *ptr, uint8_t log2_max)
+qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, double *ptr_high, const size_t stride)
 {
-	const uint32_t max = 1U << log2_max;
-	uint32_t x;
-	uint32_t y;
-	uint32_t z;
+	size_t x;
+	size_t y;
 
-#ifdef CHECK_ZERO
-	double sum = 0;
+	if (stride >= (1UL << QAS_X3_LOG2_COMBA)) {
+		const size_t strideh = stride >> 1;
 
-#endif
+		input->toggle ^= stride;
 
-	if (max < 2)
-		return;
+		if (input->toggle & stride) {
 
-	for (y = 0; y != max; y += 2) {
-#ifdef CHECK_ZERO
-		sum += fabs(ptr[y + 1]) + fabs(ptr[y]);
-#endif
-		ptr[y + 1] -= ptr[y];
-	}
-#ifdef CHECK_ZERO
-	if (sum == 0.0)
-		return;
-#endif
-	if (max < 4)
-		return;
+			/* inverse step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
 
-	for (y = 0; y != max; y += 4) {
-		ptr[y + 2] -= ptr[y];
-		ptr[y + 3] -= ptr[y + 1];
-	}
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
 
-	for (x = 4; x != max; x *= 2) {
-		for (y = 0; y != max; y += (2 * x)) {
-			for (z = 0; z != x; z += 4) {
-				ptr[y + z + x] -= ptr[y + z];
-				ptr[y + z + 1 + x] -= ptr[y + z + 1];
-				ptr[y + z + 2 + x] -= ptr[y + z + 2];
-				ptr[y + z + 3 + x] -= ptr[y + z + 3];
+				ptr_low[x + strideh] = a + b;
+				ptr_high[x] = a + b + c + d;
+			}
+
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh);
+
+			for (x = 0; x != strideh; x++)
+				ptr_low[x + strideh] = -ptr_low[x + strideh];
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh);
+
+			/* forward step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = -a - b;
+				ptr_high[x] = c + b - d;
+
+				input[x + strideh].a += input[x].a;
+				input[x + strideh].b += input[x].b;
+			}
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh);
+		} else {
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh);
+
+			/* inverse step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = -a - b;
+				ptr_high[x] = a + b + c + d;
+
+				input[x + strideh].a -= input[x].a;
+				input[x + strideh].b -= input[x].b;
+			}
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh);
+
+			for (x = 0; x != strideh; x++)
+				ptr_low[x + strideh] = -ptr_low[x + strideh];
+
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh);
+
+			/* forward step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = b - a;
+				ptr_high[x] = c - b - d;
+			}
+		}
+	} else {
+		for (x = 0; x != stride; x++) {
+			double value = input[x].a;
+
+			for (y = 0; y != (stride - x); y++) {
+				ptr_low[x + y] += input[y].b * value;
+			}
+
+			for (; y != stride; y++) {
+				ptr_high[x + y - stride] += input[y].b * value;
 			}
 		}
 	}
 }
 
-static void
-qas_mul_xform_fwd_sub_double(double *ptr, uint8_t log2_max)
+/*
+ * <input size> = "max"
+ * <output size> = 2 * "max"
+ */
+void
+qas_x3_multiply_double(double *va, double *vb, double *pc, const size_t max)
 {
-	const uint32_t max = 1U << log2_max;
-	uint32_t x;
-	uint32_t y;
-	uint32_t z;
+	struct qas_x3_input_double input[max];
+	size_t x;
 
-#ifdef CHECK_ZERO
-	double sum = 0;
-
-#endif
-
-	if (max < 2)
+	/* check for non-power of two */
+	if (max & (max - 1))
 		return;
 
-	for (y = 0; y != max; y += 2) {
-#ifdef CHECK_ZERO
-		sum += fabs(ptr[y + 1]) + fabs(ptr[y]);
-#endif
-		ptr[y + 1] += ptr[y];
-	}
-#ifdef CHECK_ZERO
-	if (sum == 0.0)
-		return;
-#endif
-	if (max < 4)
-		return;
-
-	for (y = 0; y != max; y += 4) {
-		ptr[y + 2] += ptr[y];
-		ptr[y + 3] += ptr[y + 1];
+	/* setup input vector */
+	for (x = 0; x != max; x++) {
+		input[x].a = va[x];
+		input[x].b = vb[x];
+		input[x].toggle = 0;
 	}
 
-	for (x = 4; x != max; x *= 2) {
-		for (y = 0; y != max; y += (2 * x)) {
-			for (z = 0; z != x; z += 4) {
-				ptr[y + z + x] += ptr[y + z];
-				ptr[y + z + 1 + x] += ptr[y + z + 1];
-				ptr[y + z + 2 + x] += ptr[y + z + 2];
-				ptr[y + z + 3 + x] += ptr[y + z + 3];
-			}
-		}
-	}
-}
-
-static uint32_t
-qas_mul_map_fwd_32(uint32_t x, uint32_t k, uint32_t msb)
-{
-	x &= ~k;
-
-	while ((msb /= 2) != 0) {
-		if (k & msb)
-			x -= (x & -msb) / 2;
-	}
-	return (x);
-}
-
-struct qas_mul_double_context *
-qas_mul_double_context_alloc(void)
-{
-	const uint32_t imax = QAS_MUL_SIZE;
-	const size_t size = sizeof(struct qas_mul_double_context);
-	struct qas_mul_double_context *table =
-	    (struct qas_mul_double_context *)malloc(size);
-	uint32_t x, y, z, u;
-
-	if (table != NULL) {
-		for (z = x = 0; x != imax; x++) {
-			table->offset[x] = z;
-			u = qas_sumbits32(imax - 1 - x);
-			z += (1U << u);
-		}
-		for (z = x = 0; x != imax; x++) {
-			for (y = 0; y != imax; y++, z++) {
-				y |= x;
-				table->table[z] =
-				    table->offset[imax - 1 - y] +
-				    qas_mul_map_fwd_32(y & ~x, ~y & ~x, imax);
-			}
-		}
-	}
-	return (table);
-}
-
-void
-qas_mul_xform_inv_double(double *ptr, uint32_t imax)
-{
-	uint32_t x, y, z;
-
-	for (z = x = 0; x != imax; x++) {
-		y = qas_sumbits32(imax - 1 - x);
-		qas_mul_xform_inv_sub_double(ptr + z, y);
-		z += (1U << y);
-	}
-}
-
-void
-qas_mul_xform_fwd_double(double *ptr, uint32_t imax)
-{
-	uint32_t x, y, z;
-
-	for (z = x = 0; x != imax; x++) {
-		y = qas_sumbits32(imax - 1 - x);
-		qas_mul_xform_fwd_sub_double(ptr + z, y);
-		z += (1U << y);
-	}
-}
-
-void
-qas_mul_import_double(const double *src, double *dst, uint32_t imax)
-{
-	uint32_t x, y, z;
-
-	for (z = x = 0; x != imax; x++) {
-		for (y = 0; y != imax; y++, z++) {
-			y |= x;
-			dst[z] = src[y];
-		}
-	}
-}
-
-void
-qas_mul_export_double(const double *src, double *dst, uint32_t imax)
-{
-	uint32_t x, y, z, t;
-
-	for (t = (2 * imax) - 2, z = x = 0; x != imax; x++, t--) {
-		for (y = 0; y != imax; y++, z++) {
-			y |= x;
-			dst[t - y] += src[z];
-		}
-	}
+	/* do multiplication */
+	qas_x3_multiply_sub_double(input, pc, pc + max, max);
 }

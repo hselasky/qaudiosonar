@@ -39,7 +39,7 @@ char	dsp_read_device[1024];
 char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
 double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
-double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_FILTER_SIZE];
+double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -196,9 +196,7 @@ qas_dsp_audio_analyzer(void *arg)
 	double *dsp_rd_audio;
 	double *dsp_rd_monitor;
 	static double dsp_rd_data[3][QAS_MUL_SIZE];
-	static double dsp_rd_aud_fwd_filter[QAS_FILTER_SIZE];
-	static double dsp_rd_aud_rev_filter[QAS_FILTER_SIZE];
-	static double dsp_rd_temp_filter[2][QAS_FILTER_SIZE];
+	static double dsp_rd_aud_rev[QAS_MUL_SIZE];
 	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
 
@@ -229,51 +227,22 @@ qas_dsp_audio_analyzer(void *arg)
 		if (dsp_rd_mon_filter_index == QAS_MON_COUNT)
 			dsp_rd_mon_filter_index = 0;
 
-		/* convert monitor samples */
-		qas_mul_import_double(dsp_rd_monitor,
-		    dsp_rd_mon_filter[dsp_rd_mon_filter_index], QAS_MUL_SIZE);
-		qas_mul_xform_fwd_double(dsp_rd_mon_filter[dsp_rd_mon_filter_index],
-		    QAS_MUL_SIZE);
+		/* copy monitor samples */
+		memcpy(dsp_rd_mon_filter[dsp_rd_mon_filter_index],
+		    dsp_rd_monitor, QAS_MUL_SIZE * sizeof(dsp_rd_monitor[0]));
 
-		/* convert audio samples */
-		qas_mul_import_double(dsp_rd_audio, dsp_rd_aud_fwd_filter, QAS_MUL_SIZE);
-		qas_mul_xform_fwd_double(dsp_rd_aud_fwd_filter, QAS_MUL_SIZE);
-
-		/* convert reversed audio samples */
-		for (unsigned x = 0; x != QAS_MUL_SIZE / 2; x++) {
-			double temp = dsp_rd_audio[x];
-			dsp_rd_audio[x] = dsp_rd_audio[QAS_MUL_SIZE - 1 - x];
-			dsp_rd_audio[QAS_MUL_SIZE - 1 - x] = temp;
-		}
-		qas_mul_import_double(dsp_rd_audio, dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
-		qas_mul_xform_fwd_double(dsp_rd_aud_rev_filter, QAS_MUL_SIZE);
+		/* compute reversed audio samples */
+		for (unsigned x = 0; x != QAS_MUL_SIZE; x++)
+			dsp_rd_aud_rev[x] = dsp_rd_audio[QAS_MUL_SIZE - 1 - x];
 
 		/* clear correlation buffer */
 		memset(dsp_rd_correlation_temp, 0, sizeof(dsp_rd_correlation_temp));
 
-		/* compute correlation filter */
+		/* compute correlation */
 		for (unsigned y = 0; y != QAS_MON_COUNT; y++) {
 			unsigned x = (dsp_rd_mon_filter_index + 1 + y) % QAS_MON_COUNT;
 
-			for (unsigned z = 0; z != QAS_FILTER_SIZE; z++) {
-				dsp_rd_temp_filter[0][z] = dsp_rd_mon_filter[x][z] *
-				    dsp_rd_aud_rev_filter[z];
-			}
-
-			/* compute correlation */
-			qas_mul_xform_inv_double(dsp_rd_temp_filter[0], QAS_MUL_SIZE);
-
-			/* re-order vector array */
-			for (unsigned z = 0; z != QAS_FILTER_SIZE; z++) {
-				dsp_rd_temp_filter[1][z] =
-				    dsp_rd_temp_filter[0][qas_mul_context->table[z]];
-			}
-
-			/* final error correction */
-			qas_mul_xform_inv_double(dsp_rd_temp_filter[1], QAS_MUL_SIZE);
-
-			/* export */
-			qas_mul_export_double(dsp_rd_temp_filter[1],
+			qas_x3_multiply_double(dsp_rd_mon_filter[x], dsp_rd_aud_rev,
 			    dsp_rd_correlation_temp + (QAS_MUL_SIZE * y), QAS_MUL_SIZE);
 		}
 		atomic_filter_unlock();

@@ -57,7 +57,6 @@
 
 #define	QAS_SAMPLE_RATE	16000
 #define	QAS_MUL_ORDER	8
-#define	QAS_FILTER_SIZE	(3 * 3 * 3 * 3 * 3 * 3 * 3 * 3) /* samples */
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
@@ -69,11 +68,6 @@
 #if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
 #error "Invalid parameters"
 #endif
-
-struct qas_mul_double_context {
-	uint32_t table[QAS_FILTER_SIZE];
-	uint32_t offset[QAS_MUL_SIZE];
-};
 
 struct qas_band_info {
 	int64_t power;
@@ -275,7 +269,7 @@ extern int qas_output_1;
 extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
 extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
-extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_FILTER_SIZE];
+extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 extern unsigned qas_power_index;
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
@@ -300,13 +294,7 @@ void *qas_dsp_write_thread(void *);
 void *qas_dsp_read_thread(void *);
 void qas_dsp_sync(void);
 
-extern struct qas_mul_double_context *qas_mul_context;
-
-struct qas_mul_double_context *qas_mul_double_context_alloc(void);
-void qas_mul_xform_inv_double(double *, uint32_t);
-void qas_mul_xform_fwd_double(double *, uint32_t);
-void qas_mul_import_double(const double *, double *, uint32_t);
-void qas_mul_export_double(const double *, double *, uint32_t);
+void qas_x3_multiply_double(double *, double *, double *, const size_t);
 
 void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
 
