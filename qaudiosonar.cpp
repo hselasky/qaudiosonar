@@ -121,6 +121,29 @@ QasBandPassBox :: handle_value_changed(int value)
 	valueChanged(value);
 }
 
+QasBandWidthBox :: QasBandWidthBox()
+{
+	setTitle("Band width: 20 Hz");
+
+	grid = new QGridLayout(this);
+
+	pSB = new QScrollBar(Qt::Horizontal);
+
+	pSB->setRange(1, QAS_SAMPLE_RATE / 2);
+	pSB->setSingleStep(1);
+	pSB->setValue(20);
+	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
+
+	grid->addWidget(pSB, 0,0,1,1);
+}
+
+void
+QasBandWidthBox :: handle_value_changed(int value)
+{
+	setTitle(QString("Band width: %1 Hz").arg(value));
+	valueChanged(value);
+}
+
 QasConfig :: QasConfig(QasMainWindow *_mw)
 {
 	mw = _mw;
@@ -142,19 +165,22 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
 
 	bp_box_0 = new QasBandPassBox();
-	handle_bp_box_0(0);
+	bw_box_0 = new QasBandWidthBox();
+	handle_filter_0(0);
 
 	connect(map_source_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_0(int)));
 	connect(map_source_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_1(int)));
 	connect(map_output_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_0(int)));
 	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
-	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_bp_box_0(int)));
+	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
+	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
 
 	gl->addWidget(map_source_0, 0,0,1,1);
 	gl->addWidget(map_source_1, 1,0,1,1);
 	gl->addWidget(map_output_0, 2,0,1,1);
 	gl->addWidget(map_output_1, 3,0,1,1);
 	gl->addWidget(bp_box_0, 4,0,1,1);
+	gl->addWidget(bw_box_0, 5,0,1,1);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.1"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -218,8 +244,8 @@ qas_band_pass(double freq_low, double freq_high,
     double *factor, size_t window_size)
 {
 	/* lowpass */
-	if (freq_low < 1)
-		freq_low = 1;
+	if (freq_low < (QAS_SAMPLE_RATE / window_size))
+		freq_low = (QAS_SAMPLE_RATE / window_size);
 	qas_low_pass(freq_low, factor, window_size);
 
 	/* highpass */
@@ -229,13 +255,14 @@ qas_band_pass(double freq_low, double freq_high,
 }
 
 void
-QasConfig :: handle_bp_box_0(int _value)
+QasConfig :: handle_filter_0(int value)
 {
 	double temp[QAS_MUL_SIZE];
-	double adjust = sqrt(_value);
+	double adjust = bw_box_0->pSB->value();
+	double center = bp_box_0->pSB->value();
 
 	memset(temp, 0, sizeof(temp));
-	qas_band_pass(_value - adjust, _value + adjust, temp, QAS_MUL_SIZE);
+	qas_band_pass(center - adjust, center + adjust, temp, QAS_MUL_SIZE);
 
 	atomic_lock();
 	for (size_t x = 0; x != QAS_MUL_SIZE; x++)

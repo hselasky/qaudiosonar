@@ -115,6 +115,22 @@ public slots:
 	void handle_value_changed(int);
 };
 
+class QasBandWidthBox : public QGroupBox {
+	Q_OBJECT;
+public:
+	QasBandWidthBox();
+	~QasBandWidthBox() {};
+
+	QScrollBar *pSB;
+	QGridLayout *grid;
+
+signals:
+	void valueChanged(int);
+
+public slots:
+	void handle_value_changed(int);
+};
+
 class QasMainWindow;
 class QasButtonMap;
 class QasConfig : public QWidget {
@@ -132,13 +148,14 @@ public:
 	QasButtonMap *map_output_0;
 	QasButtonMap *map_output_1;
 	QasBandPassBox *bp_box_0;
+	QasBandWidthBox *bw_box_0;
 
 public slots:
 	void handle_source_0(int);
 	void handle_source_1(int);
 	void handle_output_0(int);
 	void handle_output_1(int);
-	void handle_bp_box_0(int);
+	void handle_filter_0(int);
 };
 
 class QasBand : public QWidget {
