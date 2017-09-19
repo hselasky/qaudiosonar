@@ -40,6 +40,7 @@ char	dsp_write_device[1024];
 int64_t qas_graph_data[QAS_MON_SIZE];
 double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
+double qas_band_pass_filter[QAS_MUL_SIZE];
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -147,16 +148,46 @@ qas_white_noise(void)
 void *
 qas_dsp_audio_producer(void *arg)
 {
-	static int16_t buffer[4][QAS_DSP_SIZE];
+	static int16_t buffer[6][QAS_DSP_SIZE];
+	static double noise[2][QAS_DSP_SIZE];
+	static double temp[2][QAS_MUL_SIZE + QAS_DSP_SIZE];
 
 	atomic_lock();
 	while (1) {
 		while (dsp_write_monitor_space(&qas_write_buffer[0]) < QAS_DSP_SIZE ||
 		       dsp_write_monitor_space(&qas_write_buffer[1]) < QAS_DSP_SIZE)
 			atomic_wait();
-		for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-			buffer[1][x] = qas_brown_noise() >> 10;
-			buffer[2][x] = qas_white_noise() >> 10;
+		atomic_unlock();
+
+		for (size_t x = 0; x != QAS_DSP_SIZE; x++) {
+			/* generate noise */
+			noise[0][x] = qas_brown_noise() >> 10;
+			noise[1][x] = qas_white_noise() >> 10;
+		}
+
+		for (size_t x = 0; x != QAS_MUL_SIZE; x++) {
+			/* shift down filter */
+			temp[0][x] = temp[0][x + QAS_DSP_SIZE];
+			temp[1][x] = temp[1][x + QAS_DSP_SIZE];
+		}
+
+		for (size_t x = 0; x != QAS_DSP_SIZE; x++) {
+			/* zero rest of filter */
+			temp[0][QAS_MUL_SIZE + x] = 0;
+			temp[1][QAS_MUL_SIZE + x] = 0;
+		}
+
+		for (size_t x = 0; x != QAS_DSP_SIZE; x += QAS_MUL_SIZE) {
+			qas_x3_multiply_double(qas_band_pass_filter, noise[0] + x, temp[0] + x, QAS_MUL_SIZE);
+			qas_x3_multiply_double(qas_band_pass_filter, noise[1] + x, temp[1] + x, QAS_MUL_SIZE);
+		}
+
+		atomic_lock();
+		for (size_t x = 0; x != QAS_DSP_SIZE; x++) {
+			buffer[1][x] = noise[0][x];
+			buffer[2][x] = noise[1][x];
+			buffer[3][x] = temp[0][x];
+			buffer[4][x] = temp[1][x];
 
 			dsp_put_sample(&qas_write_buffer[0], buffer[qas_output_0][x]);
 			dsp_put_sample(&qas_write_buffer[1], buffer[qas_output_1][x]);

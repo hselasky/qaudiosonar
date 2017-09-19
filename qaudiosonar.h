@@ -54,6 +54,7 @@
 #include <QSpinBox>
 #include <QMouseEvent>
 #include <QPlainTextEdit>
+#include <QGroupBox>
 
 #define	QAS_SAMPLE_RATE	16000
 #define	QAS_MUL_ORDER	8
@@ -98,6 +99,22 @@ public:
 	uint8_t band;
 };
 
+class QasBandPassBox : public QGroupBox {
+	Q_OBJECT;
+public:
+	QasBandPassBox();
+	~QasBandPassBox() {};
+
+	QScrollBar *pSB;
+	QGridLayout *grid;
+
+signals:
+	void valueChanged(int);
+
+public slots:
+	void handle_value_changed(int);
+};
+
 class QasMainWindow;
 class QasButtonMap;
 class QasConfig : public QWidget {
@@ -114,12 +131,14 @@ public:
 	QasButtonMap *map_source_1;
 	QasButtonMap *map_output_0;
 	QasButtonMap *map_output_1;
+	QasBandPassBox *bp_box_0;
 
 public slots:
 	void handle_source_0(int);
 	void handle_source_1(int);
 	void handle_output_0(int);
 	void handle_output_1(int);
+	void handle_bp_box_0(int);
 };
 
 class QasBand : public QWidget {
@@ -268,6 +287,7 @@ extern int qas_output_0;
 extern int qas_output_1;
 extern int qas_freeze;
 extern int64_t qas_graph_data[QAS_MON_SIZE];
+extern double qas_band_pass_filter[QAS_MUL_SIZE];
 extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 extern unsigned qas_power_index;
