@@ -37,7 +37,7 @@ struct dsp_buffer qas_read_buffer[2];
 struct dsp_buffer qas_write_buffer[2];
 char	dsp_read_device[1024];
 char	dsp_write_device[1024];
-int64_t qas_graph_data[QAS_MON_SIZE];
+double qas_graph_data[QAS_MON_SIZE];
 double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 double qas_band_pass_filter[QAS_MUL_SIZE];
@@ -230,6 +230,7 @@ qas_dsp_audio_analyzer(void *arg)
 	static double dsp_rd_aud_rev[QAS_MUL_SIZE];
 	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
+	unsigned peak_index = 0;
 
 	while (1) {
 		atomic_lock();
@@ -279,10 +280,8 @@ qas_dsp_audio_analyzer(void *arg)
 		atomic_filter_unlock();
 
 		atomic_graph_lock();
-		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
-			qas_graph_data[x] *= (1.0 - 1.0 / 32.0);
-			qas_graph_data[x] += dsp_rd_correlation_temp[x];
-		}
+		for (unsigned x = 0; x != QAS_MON_SIZE; x++)
+			qas_graph_data[x] = dsp_rd_correlation_temp[x];
 		atomic_graph_unlock();
 
 		atomic_filter_lock();
@@ -292,10 +291,24 @@ qas_dsp_audio_analyzer(void *arg)
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			f->do_mon_block_in(qas_graph_data);
 			f->power[qas_power_index] = f->t_amp;
-			qas_band_power[qas_power_index][f->band] += f->t_amp;
+			if (qas_band_power[qas_power_index][f->band] < f->t_amp)
+				qas_band_power[qas_power_index][f->band] = f->t_amp;
 		}
 		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
+
+		unsigned new_peak = 0;		
+		for (unsigned x = 0; x != QAS_BAND_SIZE; x++) {
+			if (qas_band_power[qas_power_index][new_peak] <
+			    qas_band_power[qas_power_index][x])
+				new_peak = x;
+		}
 		atomic_filter_unlock();
+
+		if (new_peak != peak_index) {
+			qas_midi_key_send(12 * 2 + peak_index, 0);
+			qas_midi_key_send(12 * 2 + new_peak, 90);
+			peak_index = new_peak;
+		}
 	}
 	return (0);
 }

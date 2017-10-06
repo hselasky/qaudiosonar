@@ -43,11 +43,10 @@ void
 qas_block_filter :: do_reset()
 {
 	memset(power, 0, sizeof(power));
-	power_ref = 0;
 }
 
 void
-qas_block_filter :: do_mon_block_in(const int64_t *output_lin)
+qas_block_filter :: do_mon_block_in(const double *output_lin)
 {
 	double s_cos_in = 0;
 	double s_sin_in = 0;
@@ -59,6 +58,8 @@ qas_block_filter :: do_mon_block_in(const int64_t *output_lin)
 
 	atomic_lock();
 	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in) / (double)QAS_MON_SIZE;
+	if (t_amp < 1.0)
+		t_amp = 0.0;
 	t_phase = atan(s_sin_in / s_cos_in);
 	atomic_unlock();
 }

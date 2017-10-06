@@ -36,6 +36,7 @@
 #include <math.h>
 #include <pthread.h>
 #include <sysexits.h>
+#include <signal.h>
 
 #include <sys/filio.h>
 #include <sys/soundcard.h>
@@ -57,7 +58,8 @@
 #include <QGroupBox>
 
 #define	QAS_SAMPLE_RATE	16000
-#define	QAS_MUL_ORDER	8
+#define	QAS_MIDI_BUFSIZE 1024
+#define	QAS_MUL_ORDER	9
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
@@ -71,7 +73,7 @@
 #endif
 
 struct qas_band_info {
-	int64_t power;
+	double power;
 	uint8_t band;
 };
 
@@ -83,12 +85,11 @@ class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
-	void do_mon_block_in(const int64_t *);
+	void do_mon_block_in(const double *);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
-	int64_t power[QAS_HISTORY_SIZE];
-	int64_t power_ref;
+	double power[QAS_HISTORY_SIZE];
 	double t_cos[QAS_MON_SIZE];
 	double t_sin[QAS_MON_SIZE];
 	double t_amp;
@@ -208,7 +209,7 @@ public:
 class QasRecordEntry {
 public:
 	QasRecordEntry(const unsigned n) {
-		pvalue = (int64_t *)malloc(8 * n);
+		pvalue = (double *)malloc(8 * n);
 		pdesc = new QString [n];
 		num = n;
 	};
@@ -219,7 +220,7 @@ public:
 	QasRecordEntry_t entry;
 	QString comment;
 	QString *pdesc;
-	int64_t *pvalue;
+	double *pvalue;
 	unsigned num;
 };
 
@@ -269,6 +270,7 @@ public:
 	QasGraph *qg;
 	QLineEdit *led_dsp_read;
 	QLineEdit *led_dsp_write;
+	QLineEdit *led_midi_write;
 	QSpinBox *spn;
 
 public slots:
@@ -279,7 +281,6 @@ public slots:
 	void handle_add_lin();
 	void handle_add_piano();
 	void handle_tog_freeze();
-	void handle_set_profile();
 	void handle_slider(int);
 	void handle_show_record();
 	void handle_config();
@@ -297,13 +298,14 @@ extern struct dsp_buffer qas_read_buffer[2];
 extern struct dsp_buffer qas_write_buffer[2];
 extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
+extern char midi_write_device[1024];
 extern int qas_sample_rate;
 extern int qas_source_0;
 extern int qas_source_1;
 extern int qas_output_0;
 extern int qas_output_1;
 extern int qas_freeze;
-extern int64_t qas_graph_data[QAS_MON_SIZE];
+extern double qas_graph_data[QAS_MON_SIZE];
 extern double qas_band_pass_filter[QAS_MUL_SIZE];
 extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
@@ -329,6 +331,9 @@ void *qas_dsp_audio_producer(void *);
 void *qas_dsp_audio_analyzer(void *);
 void *qas_dsp_write_thread(void *);
 void *qas_dsp_read_thread(void *);
+void *qas_midi_write_thread(void *);
+void qas_midi_key_send(uint8_t, uint8_t);
+
 void qas_dsp_sync(void);
 
 void qas_x3_multiply_double(double *, double *, double *, const size_t);

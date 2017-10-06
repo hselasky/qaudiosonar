@@ -308,13 +308,14 @@ enum {
 };
 
 struct qas_corr {
-	int64_t value;
+	double value;
 	double width;
 };
 
 static void
 drawGraph(QPainter &paint, struct qas_corr *temp,
-    int x_off, int y_off, int w, int h, unsigned num, unsigned type)
+    int x_off, int y_off, int w, int h, unsigned num, unsigned type,
+    double peak_sel)
 {
 	unsigned x;
 	unsigned y;
@@ -324,7 +325,7 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	QColor avg(192,32,32);
 	QColor black(0,0,0);
 
-	int64_t sum = 0;
+	double sum = 0;
 	double total_width = 0;
 	for (x = y = z = 0; x != num; x++) {
 		if (temp[x].value > temp[y].value)
@@ -337,8 +338,8 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	if (num)
 		sum /= num;
 
-	int64_t min = temp[z].value;
-	int64_t max = temp[y].value;
+	double min = temp[z].value;
+	double max = temp[y].value;
 
 	if (min < 0)
 		min = -min;
@@ -349,12 +350,12 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	if (max < 1)
 		max = 1;
 	if (max < min) {
-		int64_t temp = max;
+		double temp = max;
 		max = min;
 		min = temp;
 	}
 
-	int64_t range = 2.0 * 1.125 * max;
+	double range = 2.0 * 1.125 * max;
 	if (range == 0)
 		range = 1;
 
@@ -364,7 +365,7 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	double x_tmp = x_off;
 	QRectF box;
 	for (x = 0; x != num; x++) {
-		int64_t a = temp[x].value;
+		double a = temp[x].value;
 		double delta = (double)w * temp[x].width / total_width;
 		if (a < 0) {
 			box = QRectF(
@@ -410,11 +411,15 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 	QString str;
 	switch (type) {
 	case TYPE_CORR:
-	  z = QAS_MON_SIZE - 1 - y;
-		str = QString("CORRELATION MAX=%1dB@%2samples;%3ms;%4m")
+		z = QAS_MON_SIZE - 1 - y;
+		if (peak_sel < 1.0)
+			peak_sel = 1.0;
+		str = QString("CORRELATION MAX=%1dB@%2samples;%3ms;%4m      "
+			      "SELECTION MAX=%5dB")
 		    .arg(10.0 * log(max) / log(10)).arg(z)
 		    .arg((double)((int)((z * 100000) / QAS_SAMPLE_RATE) / 100.0))
-		    .arg((double)((int)((z * 34000) / QAS_SAMPLE_RATE) / 100.0));
+		    .arg((double)((int)((z * 34000) / QAS_SAMPLE_RATE) / 100.0))
+		    .arg(10.0 * log(peak_sel) / log(10));
 		break;
 	case TYPE_AMP:
 		str = QString("AMPLITUDE MAX=%1dB MIN=%2dB")
@@ -432,17 +437,17 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 }
 
 static void
-drawImage(QPainter &paint, int64_t *temp,
-    int x_off, int y_off, int w, int h, unsigned num, unsigned sel)
+drawImage(QPainter &paint, double *temp, int x_off, int y_off, int w, int h,
+    unsigned num, unsigned sel)
 {
 	unsigned x;
 	unsigned y;
 
 	for (y = 0; y != QAS_HISTORY_SIZE; y++) {
-		int64_t max = 0;
+		double max = 0;
 
 		for (x = 0; x != num; x++) {
-			int64_t value = temp[y + x * QAS_HISTORY_SIZE];
+			double value = temp[y + x * QAS_HISTORY_SIZE];
 			if (value < 0)
 				value = -value;
 			if (value > max)
@@ -453,7 +458,7 @@ drawImage(QPainter &paint, int64_t *temp,
 			max = 1;
 
 		for (x = 0; x != num; x++) {
-			int64_t value = temp[y + x * QAS_HISTORY_SIZE];
+			double value = temp[y + x * QAS_HISTORY_SIZE];
 			if (value < 0)
 				value = -value;
 
@@ -525,7 +530,7 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	unsigned index = (QAS_HISTORY_SIZE * event->y()) / h;
 	struct qas_band_info temp[QAS_BAND_SIZE];
 
-	if (index >= (QAS_HISTORY_SIZE - 1)) {
+	if (event->y() >= height() - 16) {
 		for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
 			mapping[x] = x;
 		update();
@@ -574,7 +579,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_filter_unlock();
 
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
-		int64_t max = 0;
+		double max = 0;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
 			if (band[y][mapping[x]].power > max)
 				max = band[y][mapping[x]].power;
@@ -585,7 +590,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 			QRectF rect((w * (x - 1)) / 12, (h * y) / QAS_HISTORY_SIZE,
 			    (w + 11) / 12, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
 
-			int64_t code = (band[y][mapping[x]].power * 255LL) / max;
+			double code = (band[y][mapping[x]].power * 255LL) / max;
 			if (code > 255)
 				code = 255;
 			else if (code < 0)
@@ -649,7 +654,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	uint8_t iso_num[num];
 	uint32_t iso_count[QAS_STANDARD_AUDIO_BANDS + 1] = {};
 	double iso_xpos[QAS_STANDARD_AUDIO_BANDS + 1] = {};
-	int64_t power[num][QAS_HISTORY_SIZE];
+	double power[num][QAS_HISTORY_SIZE];
 	QString *descr = new QString [num];
 
 	num = 0;
@@ -661,21 +666,20 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		for (unsigned x = 0; x != QAS_HISTORY_SIZE; x++) {
 			power[num][x] =
 			  f->power[(QAS_HISTORY_SIZE - 1 +
-				qas_power_index - x) % QAS_HISTORY_SIZE] -
-			  f->power_ref;
+			      qas_power_index - x) % QAS_HISTORY_SIZE];
 		}
 		num++;
 	}
 	atomic_filter_unlock();
 
 	struct qas_corr corr[QAS_MON_SIZE];
-	int64_t corr_raw[QAS_MON_SIZE];
+	double corr_raw[QAS_MON_SIZE];
 
 	int zoom = mw->sb_zoom->value();
 
 	atomic_graph_lock();
 	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
-		int64_t offset = (int64_t)x - (int64_t)zoom;
+		double offset = (double)x - (double)zoom;
 		if (offset < 0)
 			offset = -offset;
 		corr[x].value = qas_graph_data[x];
@@ -718,8 +722,10 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setBrush(grey);
 	paint.drawRect(QRectF(xv,0,xs,h));
 
-	drawGraph(paint, corr, 0, 0, w, h / 2, QAS_MON_SIZE, TYPE_CORR);
-	drawImage(paint, &power[0][0], 0, h / 2, w, h / 2, num, mw->sb->value());
+	int sel = mw->sb->value();
+
+	drawGraph(paint, corr, 0, 0, w, h / 2, QAS_MON_SIZE, TYPE_CORR, power[0][sel]);
+	drawImage(paint, &power[0][0], 0, h / 2, w, h / 2, num, sel);
 
 	QFont fnt = paint.font();
 	QString str;
@@ -823,58 +829,59 @@ QasMainWindow :: QasMainWindow()
 	led_dsp_write = new QLineEdit("/dev/dsp");
 	gl->addWidget(led_dsp_write, 1,1,1,1);
 
+	gl->addWidget(new QLabel(tr("MIDI TX:")), 2,0,1,1);
+
+	led_midi_write = new QLineEdit("/midi");
+	gl->addWidget(led_midi_write, 2,1,1,1);
+	
 	pb = new QPushButton(tr("Apply"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_apply()));
 	gl->addWidget(pb, 0,2,1,1);
 
 	pb = new QPushButton(tr("Reset"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_reset()));
-	gl->addWidget(pb, 0,3,1,1);
+	gl->addWidget(pb, 1,2,1,1);
 
 	spn = new QSpinBox();
 	spn->setRange(1,1024);
 	spn->setSuffix(tr(" bands"));
 	spn->setValue(120);
-	gl->addWidget(spn, 1,2,1,1);
+	gl->addWidget(spn, 1,3,1,1);
 	
 	pb = new QPushButton(tr("AddLog"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_log()));
-	gl->addWidget(pb, 0,5,1,1);
+	gl->addWidget(pb, 0,4,1,1);
 
 	pb = new QPushButton(tr("AddLin"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_lin()));
-	gl->addWidget(pb, 0,6,1,1);
+	gl->addWidget(pb, 0,5,1,1);
 
 	pb = new QPushButton(tr("AddPiano"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
-	gl->addWidget(pb, 0,7,1,1);
+	gl->addWidget(pb, 1,4,1,1);
 
 	pb = new QPushButton(tr("ShowConfig"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_config()));
-	gl->addWidget(pb, 0,8,1,1);
+	gl->addWidget(pb, 0,7,1,1);
        
 	pb = new QPushButton(tr("DelAll"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_del_all()));
-	gl->addWidget(pb, 1,3,1,1);
-
-	pb = new QPushButton(tr("SetProfile"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_set_profile()));
-	gl->addWidget(pb, 1,4,1,1);
+	gl->addWidget(pb, 0,3,1,1);
 
 	pb = new QPushButton(tr("TogFrz"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
-	gl->addWidget(pb, 1,6,1,1);
+	gl->addWidget(pb, 0,6,1,1);
 
 	pb = new QPushButton(tr("ShowRecord"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_show_record()));
-	gl->addWidget(pb, 1,8,1,1);
+	gl->addWidget(pb, 1,7,1,1);
 
-	gl->addWidget(qb, 0,9,6,2);
-	gl->addWidget(sb_zoom, 2,0,1,9);
-	gl->addWidget(sb, 5,0,1,9);
-	gl->addWidget(qg, 3,0,2,9);
+	gl->addWidget(qb, 0,8,6,2);
+	gl->addWidget(sb_zoom, 3,0,1,8);
+	gl->addWidget(sb, 6,0,1,8);
+	gl->addWidget(qg, 4,0,2,8);
 
-	gl->setRowStretch(1,1);
+	gl->setRowStretch(2,1);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.1"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -885,6 +892,7 @@ QasMainWindow :: handle_apply()
 {
 	QString dsp_rd = led_dsp_read->text().trimmed();
 	QString dsp_wr = led_dsp_write->text().trimmed();
+	QString midi_wr = led_midi_write->text().trimmed();
 	int x;
 
 	atomic_lock();
@@ -899,6 +907,12 @@ QasMainWindow :: handle_apply()
 		dsp_write_device[x] = dsp_wr[x].toLatin1();
 	}
 	dsp_write_device[x] = 0;
+
+	for (x = 0; x != midi_wr.length() &&
+	       x != sizeof(midi_write_device) - 1; x++) {
+		midi_write_device[x] = midi_wr[x].toLatin1();
+	}
+	midi_write_device[x] = 0;
 	atomic_wakeup();
 	atomic_unlock();
 }
@@ -1124,17 +1138,6 @@ QasMainWindow :: handle_del_all()
 }
 
 void
-QasMainWindow :: handle_set_profile()
-{
-  	qas_block_filter *f;
-
-	atomic_filter_lock();
-	TAILQ_FOREACH(f, &qas_filter_head, entry)
-		f->power_ref = f->power[0];
-	atomic_filter_unlock();
-}
-
-void
 QasMainWindow :: handle_tog_freeze()
 {
 	atomic_lock();
@@ -1153,7 +1156,7 @@ QasMainWindow :: update_qr()
 {
 	unsigned int num;
 	qas_block_filter *f;
-	int64_t power;
+	double power;
 	static unsigned int qas_last_index;
 
 	atomic_filter_lock();
@@ -1166,8 +1169,9 @@ QasMainWindow :: update_qr()
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			QString str;
 			power = f->power[(QAS_HISTORY_SIZE - 1 +
-			    qas_last_index) % QAS_HISTORY_SIZE] -
-			    f->power_ref;
+			    qas_last_index) % QAS_HISTORY_SIZE];
+			if (power < 0)
+				power = 0;
 			rec->pvalue[num] = power;
 			str = QString("%1 Hz").arg((double)(int)(2.0 * f->freq) / 2.0);
 			if (f->descr != 0)
@@ -1194,6 +1198,9 @@ main(int argc, char **argv)
 	QApplication app(argc, argv);
 	int c;
 
+        /* must be first, before any threads are created */
+        signal(SIGPIPE, SIG_IGN);
+	
 	while ((c = getopt(argc, argv, "r:h")) != -1) {
 		switch (c) {
 		case 'r':
@@ -1215,6 +1222,7 @@ main(int argc, char **argv)
 	pthread_create(&td, NULL, &qas_dsp_audio_analyzer, NULL);
 	pthread_create(&td, NULL, &qas_dsp_write_thread, NULL);
 	pthread_create(&td, NULL, &qas_dsp_read_thread, NULL);
+	pthread_create(&td, NULL, &qas_midi_write_thread, NULL);
 
 	QasMainWindow *mw = new QasMainWindow();
 

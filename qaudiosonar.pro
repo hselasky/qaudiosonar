@@ -14,6 +14,7 @@ SOURCES		+= qaudiosonar_buttonmap.cpp
 SOURCES		+= qaudiosonar_mul.cpp
 SOURCES		+= qaudiosonar_filter.cpp
 SOURCES		+= qaudiosonar_oss.cpp
+SOURCES		+= qaudiosonar_midi.cpp
 SOURCES         += qaudiosonar_record.cpp
 RESOURCES	+= qaudiosonar.qrc
 TARGET          = qaudiosonar
