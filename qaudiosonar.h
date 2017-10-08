@@ -98,6 +98,7 @@ public:
 	uint32_t tag;
 	uint8_t iso_index;
 	uint8_t band;
+	uint8_t octave;
 };
 
 class QasBandPassBox : public QGroupBox {
@@ -339,5 +340,8 @@ void qas_dsp_sync(void);
 void qas_x3_multiply_double(double *, double *, double *, const size_t);
 
 void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
+
+int qas_band_power_compare(const void *, const void *);
+int qas_band_number_compare(const void *, const void *);
 
 #endif			/* _QAUDIOSONAR_H_ */

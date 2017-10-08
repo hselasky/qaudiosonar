@@ -230,7 +230,8 @@ qas_dsp_audio_analyzer(void *arg)
 	static double dsp_rd_aud_rev[QAS_MUL_SIZE];
 	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
-	unsigned peak_index = 0;
+	struct qas_band_info info[128];
+	uint8_t pressed[128] = {};
 
 	while (1) {
 		atomic_lock();
@@ -294,20 +295,52 @@ qas_dsp_audio_analyzer(void *arg)
 			if (qas_band_power[qas_power_index][f->band] < f->t_amp)
 				qas_band_power[qas_power_index][f->band] = f->t_amp;
 		}
-		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 
-		unsigned new_peak = 0;		
-		for (unsigned x = 0; x != QAS_BAND_SIZE; x++) {
-			if (qas_band_power[qas_power_index][new_peak] <
-			    qas_band_power[qas_power_index][x])
-				new_peak = x;
+		memset(info, 0, sizeof(info));
+
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			if (f->band == 0)
+				continue;
+
+			unsigned y = (f->octave - 1) * 12 + (f->band - 1);
+			if (y < 128) {
+				info[y].power = f->t_amp;
+				info[y].band = y;
+			}
 		}
+		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 		atomic_filter_unlock();
 
-		if (new_peak != peak_index) {
-			qas_midi_key_send(12 * 2 + peak_index, 0);
-			qas_midi_key_send(12 * 2 + new_peak, 90);
-			peak_index = new_peak;
+		double average = 0;
+		for (unsigned x = 0; x != 128; x++)
+			average += info[x].power;
+		average /= 128.0;
+		if (average < 10000.0)
+			average = 10000.0;
+
+		for (unsigned x = 2; x != 127; x++) {
+			uint8_t y = info[x].band;
+			uint8_t state = 0;
+
+			if (info[x].power > average &&
+			    info[x].power >= 3.0 * info[x-1].power &&
+			    info[x].power >= 3.0 * info[x+1].power)
+				state = 1;
+			if (info[x].power > average &&
+			    info[x].power >= 3.0 * info[x-2].power &&
+			    info[x].power >= 3.0 * info[x+1].power &&
+			    info[x-1].power > average &&
+			    info[x-1].power >= 3.0 * info[x-2].power &&
+			    info[x-1].power >= 3.0 * info[x+1].power)
+				state = 1;
+
+			if (state != 0) {
+				if (pressed[y] == 0)
+					qas_midi_key_send(y, 90);
+				pressed[y] = 16;
+			} else if (pressed[y] && !--pressed[y]) {
+				qas_midi_key_send(y, 0);
+			}
 		}
 	}
 	return (0);

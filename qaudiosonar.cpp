@@ -510,8 +510,8 @@ qas_band_to_key(uint8_t key)
 	}
 }
 
-static int
-qas_band_compare(const void *_pa, const void *_pb)
+int
+qas_band_power_compare(const void *_pa, const void *_pb)
 {
 	struct qas_band_info *pa = (struct qas_band_info *)_pa;
 	struct qas_band_info *pb = (struct qas_band_info *)_pb;
@@ -520,6 +520,19 @@ qas_band_compare(const void *_pa, const void *_pb)
 		return (-1);
 	else if (pa->power < pb->power)
 		return (1);
+	return (0);
+}
+
+int
+qas_band_number_compare(const void *_pa, const void *_pb)
+{
+	struct qas_band_info *pa = (struct qas_band_info *)_pa;
+	struct qas_band_info *pb = (struct qas_band_info *)_pb;
+
+	if (pa->band > pb->band)
+		return (1);
+	else if (pa->band < pb->band)
+		return (-1);
 	return (0);
 }
 
@@ -542,7 +555,7 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 		temp[x].band = x;
 	}
 
-	mergesort(temp + 1, QAS_BAND_SIZE - 1, sizeof(temp[0]), &qas_band_compare);
+	mergesort(temp + 1, QAS_BAND_SIZE - 1, sizeof(temp[0]), &qas_band_power_compare);
 
 	for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
 		mapping[x] = temp[x].band;
@@ -831,7 +844,7 @@ QasMainWindow :: QasMainWindow()
 
 	gl->addWidget(new QLabel(tr("MIDI TX:")), 2,0,1,1);
 
-	led_midi_write = new QLineEdit("/midi");
+	led_midi_write = new QLineEdit("/dev/midi");
 	gl->addWidget(led_midi_write, 2,1,1,1);
 	
 	pb = new QPushButton(tr("Apply"));
@@ -1068,6 +1081,7 @@ QasMainWindow :: handle_add_piano()
 		int octave = (y + 9 + (5 * 12)) / 12;
 
 		f->band = key + 1;
+		f->octave = octave + 1;
 		f->iso_index = qas_find_iso(cf);
 
 		switch (key) {
