@@ -129,7 +129,7 @@ QasBandWidthBox :: QasBandWidthBox()
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(1, QAS_SAMPLE_RATE / 2);
+	pSB->setRange(1, QAS_SAMPLE_RATE);
 	pSB->setSingleStep(1);
 	pSB->setValue(20);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
@@ -255,7 +255,7 @@ void
 QasConfig :: handle_filter_0(int value)
 {
 	double temp[QAS_MUL_SIZE];
-	double adjust = bw_box_0->pSB->value();
+	double adjust = bw_box_0->pSB->value() / 2.0;
 	double center = bp_box_0->pSB->value();
 
 	memset(temp, 0, sizeof(temp));
