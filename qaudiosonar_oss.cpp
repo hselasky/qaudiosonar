@@ -41,6 +41,7 @@ double qas_graph_data[QAS_MON_SIZE];
 double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 double qas_band_pass_filter[QAS_MUL_SIZE];
+double qas_midi_level = 1.0;
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
@@ -230,7 +231,7 @@ qas_dsp_audio_analyzer(void *arg)
 	static double dsp_rd_aud_rev[QAS_MUL_SIZE];
 	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
-	struct qas_band_info info[128];
+	struct qas_band_info info[256];
 	uint8_t pressed[128] = {};
 
 	while (1) {
@@ -281,8 +282,10 @@ qas_dsp_audio_analyzer(void *arg)
 		atomic_filter_unlock();
 
 		atomic_graph_lock();
-		for (unsigned x = 0; x != QAS_MON_SIZE; x++)
-			qas_graph_data[x] = dsp_rd_correlation_temp[x];
+		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+			qas_graph_data[x] *= 1.0 - 1.0 / 16.0;
+			qas_graph_data[x] += dsp_rd_correlation_temp[x];
+		}
 		atomic_graph_unlock();
 
 		atomic_filter_lock();
@@ -290,20 +293,22 @@ qas_dsp_audio_analyzer(void *arg)
 
 		qas_block_filter *f;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			uint8_t band = num2band(f->num_index);
+
 			f->do_mon_block_in(qas_graph_data);
 			f->power[qas_power_index] = f->t_amp;
-			if (qas_band_power[qas_power_index][f->band] < f->t_amp)
-				qas_band_power[qas_power_index][f->band] = f->t_amp;
+			if (qas_band_power[qas_power_index][band] < f->t_amp)
+				qas_band_power[qas_power_index][band] = f->t_amp;
 		}
 
 		memset(info, 0, sizeof(info));
 
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
-			if (f->band == 0)
+			if (f->num_index == 0)
 				continue;
 
-			unsigned y = (f->octave - 1) * 12 + (f->band - 1);
-			if (y < 128) {
+			unsigned y = f->num_index;
+			if (y < 256) {
 				info[y].power = f->t_amp;
 				info[y].band = y;
 			}
@@ -311,34 +316,25 @@ qas_dsp_audio_analyzer(void *arg)
 		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 		atomic_filter_unlock();
 
-		double average = 0;
-		for (unsigned x = 0; x != 128; x++)
-			average += info[x].power;
-		average /= 128.0;
-		if (average < 10000.0)
-			average = 10000.0;
+		for (unsigned x = 1; x != 255; x++) {
+			unsigned y = info[x].band;
+			uint8_t state;
 
-		for (unsigned x = 2; x != 127; x++) {
-			uint8_t y = info[x].band;
-			uint8_t state = 0;
+			if (y == 0 || y >= 256)
+				continue;
 
-			if (info[x].power > average &&
-			    info[x].power >= 3.0 * info[x-1].power &&
-			    info[x].power >= 3.0 * info[x+1].power)
-				state = 1;
-			if (info[x].power > average &&
-			    info[x].power >= 3.0 * info[x-2].power &&
-			    info[x].power >= 3.0 * info[x+1].power &&
-			    info[x-1].power > average &&
-			    info[x-1].power >= 3.0 * info[x-2].power &&
-			    info[x-1].power >= 3.0 * info[x+1].power)
-				state = 1;
+			y /= 2;
+
+			state = (info[x].power > qas_midi_level &&
+				 info[x].power > 1.5 * info[x - 1].power &&
+				 info[x].power > 1.5 * info[x + 1].power);
 
 			if (state != 0) {
 				if (pressed[y] == 0)
 					qas_midi_key_send(y, 90);
-				pressed[y] = 16;
-			} else if (pressed[y] && !--pressed[y]) {
+				pressed[y] = 1;
+			} else if (pressed[y] != 0) {
+				pressed[y] = 0;
 				qas_midi_key_send(y, 0);
 			}
 		}

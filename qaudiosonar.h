@@ -65,7 +65,7 @@
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_MON_SIZE	((QAS_SAMPLE_RATE / 2) - ((QAS_SAMPLE_RATE / 2) % QAS_MUL_SIZE))
 #define	QAS_MON_COUNT	(QAS_MON_SIZE / QAS_MUL_SIZE)
-#define	QAS_BAND_SIZE	13
+#define	QAS_BAND_SIZE	25
 #define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
 
 #if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
@@ -74,7 +74,7 @@
 
 struct qas_band_info {
 	double power;
-	uint8_t band;
+	unsigned band;
 };
 
 class qas_block_filter;
@@ -97,8 +97,7 @@ public:
 	double freq;
 	uint32_t tag;
 	uint8_t iso_index;
-	uint8_t band;
-	uint8_t octave;
+	uint8_t num_index;
 };
 
 class QasBandPassBox : public QGroupBox {
@@ -133,6 +132,22 @@ public slots:
 	void handle_value_changed(int);
 };
 
+class QasMidilevelBox : public QGroupBox {
+	Q_OBJECT;
+public:
+	QasMidilevelBox();
+	~QasMidilevelBox() {};
+
+	QScrollBar *pSB;
+	QGridLayout *grid;
+
+signals:
+	void valueChanged(int);
+
+public slots:
+	void handle_value_changed(int);
+};
+
 class QasMainWindow;
 class QasButtonMap;
 class QasConfig : public QWidget {
@@ -151,6 +166,7 @@ public:
 	QasButtonMap *map_output_1;
 	QasBandPassBox *bp_box_0;
 	QasBandWidthBox *bw_box_0;
+	QasMidilevelBox *ml_box_0;
 
 public slots:
 	void handle_source_0(int);
@@ -311,6 +327,13 @@ extern double qas_band_pass_filter[QAS_MUL_SIZE];
 extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 extern unsigned qas_power_index;
+extern double qas_midi_level;
+
+static inline unsigned int
+num2band(unsigned num)
+{
+	return (1 + (num % (QAS_BAND_SIZE - 1)));
+}
 
 void dsp_put_sample(struct dsp_buffer *, int16_t);
 int16_t dsp_get_sample(struct dsp_buffer *);

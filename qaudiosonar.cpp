@@ -144,6 +144,29 @@ QasBandWidthBox :: handle_value_changed(int value)
 	valueChanged(value);
 }
 
+QasMidilevelBox :: QasMidilevelBox()
+{
+	setTitle("MIDI level: 2**62");
+
+	grid = new QGridLayout(this);
+
+	pSB = new QScrollBar(Qt::Horizontal);
+
+	pSB->setRange(0, 62);
+	pSB->setSingleStep(1);
+	pSB->setValue(62);
+	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
+
+	grid->addWidget(pSB, 0,0,1,1);
+}
+
+void
+QasMidilevelBox :: handle_value_changed(int value)
+{
+	setTitle(QString("MIDI level: 2**%1").arg(value));
+	valueChanged(value);
+}
+
 QasConfig :: QasConfig(QasMainWindow *_mw)
 {
 	mw = _mw;
@@ -166,6 +189,7 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 
 	bp_box_0 = new QasBandPassBox();
 	bw_box_0 = new QasBandWidthBox();
+	ml_box_0 = new QasMidilevelBox();
 	handle_filter_0(0);
 
 	connect(map_source_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_0(int)));
@@ -173,7 +197,8 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	connect(map_output_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_0(int)));
 	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
 	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
-	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
+	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
+	connect(ml_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
 
 	gl->addWidget(map_source_0, 0,0,1,1);
 	gl->addWidget(map_source_1, 1,0,1,1);
@@ -181,6 +206,7 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	gl->addWidget(map_output_1, 3,0,1,1);
 	gl->addWidget(bp_box_0, 4,0,1,1);
 	gl->addWidget(bw_box_0, 5,0,1,1);
+	gl->addWidget(ml_box_0, 6,0,1,1);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.1"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -257,6 +283,7 @@ QasConfig :: handle_filter_0(int value)
 	double temp[QAS_MUL_SIZE];
 	double adjust = bw_box_0->pSB->value() / 2.0;
 	double center = bp_box_0->pSB->value();
+	int level = ml_box_0->pSB->value();
 
 	memset(temp, 0, sizeof(temp));
 	qas_band_pass(center - adjust, center + adjust, temp, QAS_MUL_SIZE);
@@ -264,6 +291,7 @@ QasConfig :: handle_filter_0(int value)
 	atomic_lock();
 	for (size_t x = 0; x != QAS_MUL_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
+	qas_midi_level = 1LL << level;
 	atomic_unlock();
 }
 
@@ -516,6 +544,11 @@ qas_band_power_compare(const void *_pa, const void *_pb)
 	struct qas_band_info *pa = (struct qas_band_info *)_pa;
 	struct qas_band_info *pb = (struct qas_band_info *)_pb;
 
+	if (pa->power < (pa + 1)->power)
+		pa++;
+	if (pb->power < (pb + 1)->power)
+		pb++;
+
 	if (pa->power > pb->power)
 		return (-1);
 	else if (pa->power < pb->power)
@@ -555,10 +588,11 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 		temp[x].band = x;
 	}
 
-	mergesort(temp + 1, QAS_BAND_SIZE - 1, sizeof(temp[0]), &qas_band_power_compare);
+	mergesort(temp + 1, (QAS_BAND_SIZE - 1) / 2, 2 * sizeof(temp[0]), &qas_band_power_compare);
 
 	for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
 		mapping[x] = temp[x].band;
+
 	update();
 }
 
@@ -592,6 +626,9 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_filter_unlock();
 
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
+		enum {
+			NUM = QAS_BAND_SIZE - 1,
+		};
 		double max = 0;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
 			if (band[y][mapping[x]].power > max)
@@ -600,8 +637,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 		if (max == 0)
 			max = 1;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-			QRectF rect((w * (x - 1)) / 12, (h * y) / QAS_HISTORY_SIZE,
-			    (w + 11) / 12, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
+			QRectF rect((w * (x - 1)) / NUM, (h * y) / QAS_HISTORY_SIZE,
+			    (w + 11) / NUM, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
 
 			double code = (band[y][mapping[x]].power * 255LL) / max;
 			if (code > 255)
@@ -628,9 +665,12 @@ QasBand :: paintEvent(QPaintEvent *event)
 	paint.rotate(-90);
 
 	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-		QString str = QString(qas_band_to_key(mapping[x] - 1)).arg(5);
-		qreal xs = (qreal)w / 12.0;
-		paint.drawText(QPoint(-h, xs * (x - 1) + 8 + xs / 2.0), str);
+		uint8_t key = mapping[x] - 1;
+		if (key % 2)
+			continue;
+		QString str = QString(qas_band_to_key(key / 2)).arg(5);
+		qreal xs = (qreal)w / 24.0;
+		paint.drawText(QPoint(-h, xs * (x - 1) + 8 + xs), str);
 		paint.drawRect(QRectF(-h, xs * (x - 1), 16, 2));
 	}
 
@@ -858,7 +898,7 @@ QasMainWindow :: QasMainWindow()
 	spn = new QSpinBox();
 	spn->setRange(1,1024);
 	spn->setSuffix(tr(" bands"));
-	spn->setValue(120);
+	spn->setValue(240);
 	gl->addWidget(spn, 1,3,1,1);
 	
 	pb = new QPushButton(tr("AddLog"));
@@ -1044,16 +1084,17 @@ QasMainWindow :: handle_add_piano()
 	unsigned max_bands = spn->value();
 	double max_width;
 	unsigned x;
+	unsigned octave;
 	int y;
 	double cf;
 	double lf;
 	double hf;
 	double pf;
 
-	/* must be power of 12 */
-	max_bands += (12 - (max_bands % 12)) % 12;
+	/* must be divisible by 24 */
+	max_bands += (24 - (max_bands % 24)) % 24;
 
-	pf = pow(2.0, 1.0 / 12.0);
+	pf = pow(2.0, 1.0 / 24.0);
 
 	x = max_bands;
 	y = x - (max_bands / 2);
@@ -1077,14 +1118,14 @@ QasMainWindow :: handle_add_piano()
 
 		f = new qas_block_filter(sqrt(max_width / (hf - lf)), lf, hf);
 
-		int key = (y + 9 + (5 * 12)) % 12;
-		int octave = (y + 9 + (5 * 12)) / 12;
-
-		f->band = key + 1;
-		f->octave = octave + 1;
+		f->num_index = y + (2 * 9) + (5 * 24);
 		f->iso_index = qas_find_iso(cf);
 
-		switch (key) {
+		octave = f->num_index / 24;
+
+		if (f->num_index % 2) {
+			str = "";
+		} else switch ((f->num_index % 24) / 2) {
 		case 9:
 			str = QString(" - A%1").arg(octave);
 			break;
