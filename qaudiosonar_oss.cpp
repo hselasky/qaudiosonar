@@ -44,26 +44,26 @@ double qas_band_pass_filter[QAS_MUL_SIZE];
 double qas_midi_level = 1.0;
 
 void
-dsp_put_sample(struct dsp_buffer *dbuf, int16_t sample)
+dsp_put_sample(struct dsp_buffer *dbuf, double sample)
 {
 	dbuf->buffer[dbuf->in_off++] = sample;
 	dbuf->in_off %= QAS_BUFFER_SIZE;
 }
 
-int16_t
+double
 dsp_get_sample(struct dsp_buffer *dbuf)
 {
-	int16_t retval;
+	double retval;
 
 	retval = dbuf->buffer[dbuf->out_off++];
 	dbuf->out_off %= QAS_BUFFER_SIZE;
 	return (retval);
 }
 
-int16_t
+double
 dsp_get_monitor_sample(struct dsp_buffer *dbuf)
 {
-	int16_t retval;
+	double retval;
 
 	retval = dbuf->buffer[dbuf->mon_off++];
 	dbuf->mon_off %= QAS_BUFFER_SIZE;
@@ -149,7 +149,7 @@ qas_white_noise(void)
 void *
 qas_dsp_audio_producer(void *arg)
 {
-	static int16_t buffer[6][QAS_DSP_SIZE];
+	static double buffer[6][QAS_DSP_SIZE];
 	static double noise[2][QAS_DSP_SIZE];
 	static double temp[2][QAS_MUL_SIZE + QAS_DSP_SIZE];
 
@@ -162,8 +162,8 @@ qas_dsp_audio_producer(void *arg)
 
 		for (size_t x = 0; x != QAS_DSP_SIZE; x++) {
 			/* generate noise */
-			noise[0][x] = qas_brown_noise() >> 10;
-			noise[1][x] = qas_white_noise() >> 10;
+			noise[0][x] = qas_brown_noise();
+			noise[1][x] = qas_white_noise();
 		}
 
 		for (size_t x = 0; x != QAS_MUL_SIZE; x++) {
@@ -348,13 +348,17 @@ qas_dsp_audio_analyzer(void *arg)
 void *
 qas_dsp_write_thread(void *)
 {
-	static int16_t buffer[2 * QAS_DSP_SIZE];
+	static union {
+		int16_t s16[2 * QAS_DSP_SIZE];
+		int32_t s32[2 * QAS_DSP_SIZE];
+	} buffer;
 	static char fname[1024];
 	int f = -1;
 	int err;
 	int temp;
 	int channels;
 	int buflen;
+	int afmt;
 
 	while (1) {
 		if (f > -1) {
@@ -380,11 +384,15 @@ qas_dsp_write_thread(void *)
 		if (err)
 			continue;
 
-		temp = AFMT_S16_NE;
-		err = ioctl(f, SNDCTL_DSP_SETFMT, &temp);
-		if (err)
-			continue;
-
+		afmt = AFMT_S32_NE;
+		err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
+		if (err) {
+			afmt = AFMT_S16_NE;
+			err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
+			if (err)
+				continue;
+		}
+		
 		channels = 2;
 		err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
 		if (err) {
@@ -413,6 +421,11 @@ qas_dsp_write_thread(void *)
 		if (err)
 			continue;
 
+		/* compute buffer length */
+		buflen = (channels == 1 ?
+		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) / 2 : sizeof(buffer.s16) / 2) :
+		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) : sizeof(buffer.s16)));
+
 		while (1) {
 			atomic_lock();
 			while (dsp_read_space(&qas_write_buffer[0]) < QAS_DSP_SIZE ||
@@ -421,14 +434,28 @@ qas_dsp_write_thread(void *)
 				atomic_wait();
 			}
 			if (channels == 2) {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-					buffer[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
-					buffer[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
+				if (afmt == AFMT_S32_NE) {
+					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+						buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
+						buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
+					}
+				} else {
+					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+						buffer.s16[2*x+0] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
+						buffer.s16[2*x+1] = dsp_get_sample(&qas_write_buffer[1]) / 65536.0;
+					}
 				}
 			} else {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-					buffer[x] = dsp_get_sample(&qas_write_buffer[0]);
-					(void) dsp_get_sample(&qas_write_buffer[1]);
+				if (afmt == AFMT_S32_NE) {
+					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+						buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
+						(void) dsp_get_sample(&qas_write_buffer[1]);
+					}
+				} else {
+					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+						buffer.s16[x] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
+						(void) dsp_get_sample(&qas_write_buffer[1]);
+					}
 				}
 			}
 			atomic_wakeup();
@@ -437,8 +464,7 @@ qas_dsp_write_thread(void *)
 				break;
 			}
 			atomic_unlock();
-			buflen = (channels == 1 ? sizeof(buffer) / 2 : sizeof(buffer));
-			err = write(f, buffer, buflen);
+			err = write(f, &buffer, buflen);
 			if (err != buflen)
 				break;
 		}
@@ -449,13 +475,17 @@ qas_dsp_write_thread(void *)
 void *
 qas_dsp_read_thread(void *arg)
 {
-	static int16_t buffer[2 * QAS_DSP_SIZE];
+	static union {
+		int16_t s16[2 * QAS_DSP_SIZE];
+		int32_t s32[2 * QAS_DSP_SIZE];
+	} buffer;
 	static char fname[1024];
 	int f = -1;
 	int err;
 	int temp;
 	int channels;
 	int buflen;
+	int afmt;
 
 	while (1) {
 		if (f > -1) {
@@ -481,10 +511,14 @@ qas_dsp_read_thread(void *arg)
 		if (err)
 			continue;
 
-		temp = AFMT_S16_NE;
-		err = ioctl(f, SNDCTL_DSP_SETFMT, &temp);
-		if (err)
-			continue;
+		afmt = AFMT_S32_NE;
+		err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
+		if (err) {
+			afmt = AFMT_S16_NE;
+			err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
+			if (err)
+				continue;
+		}
 
 		channels = 2;
 		err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
@@ -514,22 +548,40 @@ qas_dsp_read_thread(void *arg)
 		if (err)
 			continue;
 
+		/* compute buffer length */
+		buflen = (channels == 1 ?
+		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) / 2 : sizeof(buffer.s16) / 2) :
+		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) : sizeof(buffer.s16)));
+
 		while (1) {
-			buflen = (channels == 1 ? sizeof(buffer) / 2 : sizeof(buffer));
-			err = read(f, buffer, buflen);
+			err = read(f, &buffer, buflen);
 			if (err != buflen)
 				break;
 
 			atomic_lock();
 			if (channels == 2) {
-				for (int x = 0; x != (err / 4); x++) {
-					dsp_put_sample(&qas_read_buffer[0], buffer[2*x+0]);
-					dsp_put_sample(&qas_read_buffer[1], buffer[2*x+1]);
+				if (afmt == AFMT_S32_NE) {
+					for (int x = 0; x != (err / 8); x++) {
+						dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
+						dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
+					}
+				} else {
+					for (int x = 0; x != (err / 4); x++) {
+						dsp_put_sample(&qas_read_buffer[0], buffer.s16[2*x+0]);
+						dsp_put_sample(&qas_read_buffer[1], buffer.s16[2*x+1]);
+					}
 				}
 			} else {
-				for (int x = 0; x != (err / 2); x++) {
-					dsp_put_sample(&qas_read_buffer[0], buffer[x]);
-					dsp_put_sample(&qas_read_buffer[1], 0);
+				if (afmt == AFMT_S32_NE) {
+					for (int x = 0; x != (err / 4); x++) {
+						dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
+						dsp_put_sample(&qas_read_buffer[1], 0);
+					}
+				} else {
+					for (int x = 0; x != (err / 2); x++) {
+						dsp_put_sample(&qas_read_buffer[0], buffer.s16[x]);
+						dsp_put_sample(&qas_read_buffer[1], 0);
+					}
 				}
 			}
 			atomic_wakeup();

@@ -304,7 +304,7 @@ public slots:
 };
 
 struct dsp_buffer {
-	int16_t buffer[QAS_BUFFER_SIZE];
+	double buffer[QAS_BUFFER_SIZE];
 	unsigned in_off;
 	unsigned mon_off;
 	unsigned out_off;
@@ -335,9 +335,9 @@ num2band(unsigned num)
 	return (1 + (num % (QAS_BAND_SIZE - 1)));
 }
 
-void dsp_put_sample(struct dsp_buffer *, int16_t);
-int16_t dsp_get_sample(struct dsp_buffer *);
-int16_t dsp_get_monitor_sample(struct dsp_buffer *);
+void dsp_put_sample(struct dsp_buffer *, double);
+double dsp_get_sample(struct dsp_buffer *);
+double dsp_get_monitor_sample(struct dsp_buffer *);
 unsigned dsp_write_space(struct dsp_buffer *);
 unsigned dsp_read_space(struct dsp_buffer *);
 unsigned dsp_monitor_space(struct dsp_buffer *);
