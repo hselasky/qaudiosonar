@@ -41,7 +41,7 @@ double qas_graph_data[QAS_MON_SIZE];
 double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 double qas_band_pass_filter[QAS_MUL_SIZE];
-double qas_midi_level = 1.0;
+double qas_midi_level = 1LL << 62;
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, double sample)
