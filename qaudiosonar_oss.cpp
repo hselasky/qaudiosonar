@@ -316,26 +316,29 @@ qas_dsp_audio_analyzer(void *arg)
 		qas_power_index = (qas_power_index + 1) % QAS_HISTORY_SIZE;
 		atomic_filter_unlock();
 
+		uint8_t state[128] = {};
+
 		for (unsigned x = 1; x != 255; x++) {
 			unsigned y = info[x].band;
-			uint8_t state;
 
 			if (y == 0 || y >= 256)
 				continue;
 
 			y /= 2;
 
-			state = (info[x].power > qas_midi_level &&
-				 info[x].power > 1.5 * info[x - 1].power &&
-				 info[x].power > 1.5 * info[x + 1].power);
+			state[y] |= (info[x].power > qas_midi_level &&
+				     info[x].power > info[x - 1].power &&
+				     info[x].power > info[x + 1].power);
+		}
 
-			if (state != 0) {
-				if (pressed[y] == 0)
-					qas_midi_key_send(y, 90);
-				pressed[y] = 1;
-			} else if (pressed[y] != 0) {
-				pressed[y] = 0;
-				qas_midi_key_send(y, 0);
+		for (unsigned x = 0; x != 128; x++) {
+			if (state[x] != 0) {
+				if (pressed[x] == 0)
+					qas_midi_key_send(x, 90);
+				pressed[x] = 1;
+			} else if (pressed[x] != 0) {
+				pressed[x] = 0;
+				qas_midi_key_send(x, 0);
 			}
 		}
 	}
