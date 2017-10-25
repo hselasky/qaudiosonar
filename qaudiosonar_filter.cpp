@@ -57,10 +57,39 @@ qas_block_filter :: do_mon_block_in(const double *output_lin, ssize_t size)
 	}
 
 	atomic_lock();
-	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in) / (double)size;
-	if (t_amp < 1.0)
+	s_cos_in /= (double)size;
+	s_sin_in /= (double)size;
+	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in);
+	if (t_amp < 1.0) {
 		t_amp = 0.0;
-	t_phase = atan(s_sin_in / s_cos_in);
+		t_phase = 0.0;
+	} else {
+		uint8_t pol = ((s_cos_in < 0) ? 2 : 0) | ((s_sin_in < 0) ? 1 : 0);
+
+		t_phase = acos(fabs(s_cos_in) / t_amp);
+
+		switch (pol) {
+		case 0:
+			break;
+		case 1:
+			t_phase = -t_phase;
+			break;
+		case 2:
+			t_phase = -M_PI - t_phase;
+			break;
+		case 3:
+			t_phase = -M_PI + t_phase;
+			break;
+		default:
+			break;
+		}
+
+		t_phase += M_PI;
+		if (t_phase < 0.0)
+			t_phase += 2.0 * M_PI;
+		if (t_phase >= 2.0 * M_PI)
+			t_phase -= 2.0 * M_PI;
+	}
 	atomic_unlock();
 }
 

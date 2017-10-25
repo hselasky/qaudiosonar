@@ -837,12 +837,12 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			iso_div[f->iso_index] ++;
 
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
-			double t_phase = f->t_phase + M_PI;
+			double t_phase = f->t_phase;
 
 			if (t_phase < 0.0)
-				t_phase = 0.0;
-			else if (t_phase > 2.0 * M_PI)
-				t_phase = 2.0 * M_PI;
+				t_phase += 2.0 * M_PI;
+			if (t_phase >= 2.0 * M_PI)
+				t_phase -= 2.0 * M_PI;
 
 			iso_amp[f->iso_index] += t_phase / iso_div[f->iso_index];
 			if (fn < num) {
