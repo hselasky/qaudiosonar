@@ -233,6 +233,7 @@ qas_dsp_audio_analyzer(void *arg)
 	static double dsp_rd_aud_rev[QAS_MUL_SIZE];
 	static double dsp_rd_correlation_temp[QAS_MON_SIZE + QAS_MUL_SIZE];
 	static unsigned dsp_rd_mon_filter_index = 0;
+	static unsigned dsp_counter;
 	struct qas_band_info info[256];
 	uint8_t pressed[128] = {};
 
@@ -306,25 +307,21 @@ qas_dsp_audio_analyzer(void *arg)
 		TAILQ_FOREACH(f, &qas_filter_head, entry)
 			num++;
 
-		unsigned samples = peak_x * num;
-		if (samples > 65536)
-			samples = 65536;
-		if (num == 0)
-			num = 1;
-		samples /= num;
-		if (samples == 0)
-			samples = 1;
-		if (samples > peak_x)
-			samples = peak_x;
+		if (dsp_counter > (num / 32))
+			dsp_counter = 0;
 
+		num = 0;
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			uint8_t band = num2band(f->num_index);
-
-			f->do_mon_block_in(qas_graph_data + peak_x, samples);
+			if ((num / 32) == dsp_counter)
+				f->do_mon_block_in(qas_graph_data + peak_x, peak_x + 1);
+			num++;
 			f->power[qas_power_index] = f->t_amp;
 			if (qas_band_power[qas_power_index][band] < f->t_amp)
 				qas_band_power[qas_power_index][band] = f->t_amp;
 		}
+
+		dsp_counter++;
 
 		memset(info, 0, sizeof(info));
 

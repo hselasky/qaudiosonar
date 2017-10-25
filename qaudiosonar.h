@@ -59,7 +59,7 @@
 
 #define	QAS_SAMPLE_RATE	48000
 #define	QAS_MIDI_BUFSIZE 1024
-#define	QAS_MUL_ORDER	9
+#define	QAS_MUL_ORDER	10
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
