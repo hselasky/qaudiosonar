@@ -42,6 +42,8 @@ double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 double qas_band_pass_filter[QAS_MUL_SIZE];
 double qas_midi_level = 1LL << 62;
+QasView_t qas_view_what = VIEW_AMP_LIN;
+double qas_view_decay = 1.0 - 1.0 / 8.0;
 
 void
 dsp_put_sample(struct dsp_buffer *dbuf, double sample)
@@ -283,19 +285,42 @@ qas_dsp_audio_analyzer(void *arg)
 
 		atomic_graph_lock();
 		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
-			qas_graph_data[x] *= 1.0 - 1.0 / 16.0;
+			qas_graph_data[x] *= qas_view_decay;
 			qas_graph_data[x] += dsp_rd_correlation_temp[x];
 		}
 		atomic_graph_unlock();
+
+
+		unsigned peak_x = 0;
+		for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+			if (fabs(qas_graph_data[x]) > fabs(qas_graph_data[peak_x]))
+				peak_x = x;
+		}
 
 		atomic_filter_lock();
 		memset(qas_band_power[qas_power_index], 0, sizeof(qas_band_power[qas_power_index]));
 
 		qas_block_filter *f;
+		unsigned num = 0;
+
+		TAILQ_FOREACH(f, &qas_filter_head, entry)
+			num++;
+
+		size_t samples = (QAS_MON_SIZE - peak_x) * num;
+		if (samples > 65536)
+			samples = 65536;
+
+		if (num == 0)
+			num = 1;
+
+		samples /= num;
+		if (samples == 0)
+			samples = 1;
+
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			uint8_t band = num2band(f->num_index);
 
-			f->do_mon_block_in(qas_graph_data);
+			f->do_mon_block_in(qas_graph_data + peak_x, samples);
 			f->power[qas_power_index] = f->t_amp;
 			if (qas_band_power[qas_power_index][band] < f->t_amp)
 				qas_band_power[qas_power_index][band] = f->t_amp;

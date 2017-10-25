@@ -242,6 +242,46 @@ QasConfig :: handle_output_0(int _value)
 	mw->handle_reset();
 }
 
+QasView :: QasView(QasMainWindow *_mw)
+{
+	mw = _mw;
+
+	gl = new QGridLayout(this);
+
+	map_view_0 = new QasButtonMap("Main view\0"
+				      "AMP-LIN\0" "AMP-LOG\0"
+				      "PHASE-LIN\0", 3, 3);
+
+	map_decay_0 = new QasButtonMap("Decay selection\0"
+				       "1/8\0" "1/16\0" "1/32\0"
+				       "1/64\0" "1/128\0" "1/256\0", 6, 6);
+
+	connect(map_view_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_view_0(int)));
+	connect(map_decay_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_decay_0(int)));
+
+	gl->addWidget(map_view_0, 0,0,1,1);
+	gl->addWidget(map_decay_0, 1,0,1,1);
+
+	setWindowTitle(tr("Quick Audio Sonar v1.1"));
+	setWindowIcon(QIcon(":/qaudiosonar.png"));
+}
+
+void
+QasView :: handle_view_0(int _value)
+{
+  	atomic_filter_lock();
+	qas_view_what = (QasView_t)_value;
+	atomic_filter_unlock();
+}
+
+void
+QasView :: handle_decay_0(int _value)
+{
+	atomic_graph_lock();
+	qas_view_decay = 1.0 - 1.0 / (1 << (_value + 3));
+	atomic_graph_unlock();
+}
+
 static void
 qas_low_pass(double freq, double *factor, size_t window_size)
 {
@@ -742,31 +782,81 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	}
 	atomic_graph_unlock();
 
+	double amp_max;
+
 	atomic_filter_lock();
 	unsigned fn = 0;
-	TAILQ_FOREACH(f, &qas_filter_head, entry) {
-		if (f->t_amp > iso_amp[f->iso_index])
-			iso_amp[f->iso_index] = f->t_amp;	  
-		if (fn < num) {
-			iso_num[fn] = f->iso_index;
-			if (f->t_amp >= 1.0)
-				amp[fn++] = f->t_amp;
-			else
-				amp[fn++] = 0.0;
+	switch (qas_view_what) {
+	case VIEW_AMP_LIN:
+		amp_max = 1.0;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			double t_amp = f->t_amp;
+
+			if (t_amp > iso_amp[f->iso_index])
+				iso_amp[f->iso_index] = t_amp;
+			if (fn < num) {
+				iso_num[fn] = f->iso_index;
+				if (t_amp >= 1.0) {
+					amp[fn++] = t_amp;
+					if (t_amp > amp_max)
+						amp_max = t_amp;
+				} else {
+					amp[fn++] = 0.0;
+				}
+			}
 		}
+		break;
+	case VIEW_AMP_LOG:
+		amp_max = 1.0;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			double t_amp = f->t_amp;
+
+			if (t_amp < 1.0)
+				t_amp = 0;
+			else
+				t_amp = log(t_amp);
+		  
+			if (t_amp > iso_amp[f->iso_index])
+				iso_amp[f->iso_index] = t_amp;
+			if (fn < num) {
+				iso_num[fn] = f->iso_index;
+				if (t_amp >= 1.0) {
+					amp[fn++] = t_amp;
+					if (t_amp > amp_max)
+						amp_max = t_amp;
+				} else {
+					amp[fn++] = 0.0;
+				}
+			}
+		}
+		break;
+	case VIEW_PHASE_LIN:
+		amp_max = 2.0 * M_PI;
+		TAILQ_FOREACH(f, &qas_filter_head, entry) {
+			double t_phase = f->t_phase + M_PI;
+
+			if (t_phase < 0.0)
+				t_phase = 0.0;
+			else if (t_phase > 2.0 * M_PI)
+				t_phase = 2.0 * M_PI;
+
+			iso_amp[f->iso_index] += t_phase / (double)num;
+
+			if (fn < num) {
+				iso_num[fn] = f->iso_index;
+				amp[fn++] = t_phase;
+			}
+		}
+		break;
+	default:
+		amp_max = 1.0;
+		break;
 	}
 	while (fn < num) {
 		iso_num[fn] = 0;
 		amp[fn++] = 0;
 	}
 	atomic_filter_unlock();
-
-	double amp_max = 1;
-
-	for (fn = 0; fn != num; fn++) {
-		if (amp_max < amp[fn])
-			amp_max = amp[fn];
-	}
 
 	double xs = w / (double)num;
 	double xv = mw->sb->value() * xs;
@@ -855,6 +945,7 @@ QasMainWindow :: QasMainWindow()
 
 	qr = new QasRecord();
 	qc = new QasConfig(this);
+	qv = new QasView(this);
 
 	gl = new QGridLayout(this);
 
@@ -913,7 +1004,7 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_add_piano()));
 	gl->addWidget(pb, 1,4,1,1);
 
-	pb = new QPushButton(tr("ShowConfig"));
+	pb = new QPushButton(tr("AudioConfig"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_config()));
 	gl->addWidget(pb, 0,7,1,1);
        
@@ -924,6 +1015,10 @@ QasMainWindow :: QasMainWindow()
 	pb = new QPushButton(tr("TogFrz"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 0,6,1,1);
+
+	pb = new QPushButton(tr("ViewConfig"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_view()));
+	gl->addWidget(pb, 1,6,1,1);
 
 	pb = new QPushButton(tr("ShowRecord"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_show_record()));
@@ -985,6 +1080,12 @@ void
 QasMainWindow :: handle_config()
 {
 	qc->show();
+}
+
+void
+QasMainWindow :: handle_view()
+{
+	qv->show();
 }
 
 void

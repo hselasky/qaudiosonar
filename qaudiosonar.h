@@ -57,7 +57,7 @@
 #include <QPlainTextEdit>
 #include <QGroupBox>
 
-#define	QAS_SAMPLE_RATE	16000
+#define	QAS_SAMPLE_RATE	48000
 #define	QAS_MIDI_BUFSIZE 1024
 #define	QAS_MUL_ORDER	9
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
@@ -85,7 +85,7 @@ class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
-	void do_mon_block_in(const double *);
+	void do_mon_block_in(const double *, size_t samples);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
@@ -174,6 +174,30 @@ public slots:
 	void handle_output_0(int);
 	void handle_output_1(int);
 	void handle_filter_0(int);
+};
+
+typedef enum {
+	VIEW_AMP_LIN,
+	VIEW_AMP_LOG,
+	VIEW_PHASE_LIN,
+} QasView_t;
+
+class QasView : public QWidget {
+	Q_OBJECT
+public:
+	QasView(QasMainWindow *);
+	~QasView() { };
+
+	QasMainWindow *mw;
+
+	QGridLayout *gl;
+
+	QasButtonMap *map_view_0;
+	QasButtonMap *map_decay_0;
+
+public slots:
+	void handle_view_0(int);
+	void handle_decay_0(int);
 };
 
 class QasBand : public QWidget {
@@ -279,6 +303,7 @@ public:
 	void update_qr();
 
 	QasConfig *qc;
+	QasView *qv;
 	QasRecord *qr;
 	QGridLayout *gl;
 	QScrollBar *sb;
@@ -301,6 +326,7 @@ public slots:
 	void handle_slider(int);
 	void handle_show_record();
 	void handle_config();
+	void handle_view();
 };
 
 struct dsp_buffer {
@@ -328,6 +354,8 @@ extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
 extern unsigned qas_power_index;
 extern double qas_midi_level;
+extern QasView_t qas_view_what;
+extern double qas_view_decay;
 
 static inline unsigned int
 num2band(unsigned num)

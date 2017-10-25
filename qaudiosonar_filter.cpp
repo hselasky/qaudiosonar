@@ -46,18 +46,18 @@ qas_block_filter :: do_reset()
 }
 
 void
-qas_block_filter :: do_mon_block_in(const double *output_lin)
+qas_block_filter :: do_mon_block_in(const double *output_lin, size_t size)
 {
 	double s_cos_in = 0;
 	double s_sin_in = 0;
 
-	for (unsigned x = 0; x != QAS_MON_SIZE; x++) {
+	for (size_t x = 0; x != size; x++) {
 		s_cos_in += t_cos[x] * output_lin[x];
 		s_sin_in += t_sin[x] * output_lin[x];
 	}
 
 	atomic_lock();
-	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in) / (double)QAS_MON_SIZE;
+	t_amp = sqrt(s_cos_in * s_cos_in + s_sin_in * s_sin_in) / (double)size;
 	if (t_amp < 1.0)
 		t_amp = 0.0;
 	t_phase = atan(s_sin_in / s_cos_in);
