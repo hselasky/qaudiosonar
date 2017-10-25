@@ -745,6 +745,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	double amp[num];
 	double iso_amp[QAS_STANDARD_AUDIO_BANDS + 1] = {};
 	uint8_t iso_num[num];
+	double iso_div[QAS_STANDARD_AUDIO_BANDS + 1] = {};
 	uint32_t iso_count[QAS_STANDARD_AUDIO_BANDS + 1] = {};
 	double iso_xpos[QAS_STANDARD_AUDIO_BANDS + 1] = {};
 	double power[num][QAS_HISTORY_SIZE];
@@ -832,6 +833,9 @@ QasGraph :: paintEvent(QPaintEvent *event)
 		break;
 	case VIEW_PHASE_LIN:
 		amp_max = 2.0 * M_PI;
+		TAILQ_FOREACH(f, &qas_filter_head, entry)
+			iso_div[f->iso_index] ++;
+
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			double t_phase = f->t_phase + M_PI;
 
@@ -840,8 +844,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			else if (t_phase > 2.0 * M_PI)
 				t_phase = 2.0 * M_PI;
 
-			iso_amp[f->iso_index] += t_phase / (double)num;
-
+			iso_amp[f->iso_index] += t_phase / iso_div[f->iso_index];
 			if (fn < num) {
 				iso_num[fn] = f->iso_index;
 				amp[fn++] = t_phase;

@@ -46,14 +46,14 @@ qas_block_filter :: do_reset()
 }
 
 void
-qas_block_filter :: do_mon_block_in(const double *output_lin, size_t size)
+qas_block_filter :: do_mon_block_in(const double *output_lin, ssize_t size)
 {
 	double s_cos_in = 0;
 	double s_sin_in = 0;
 
-	for (size_t x = 0; x != size; x++) {
-		s_cos_in += t_cos[x] * output_lin[x];
-		s_sin_in += t_sin[x] * output_lin[x];
+	for (ssize_t x = 0; x != size; x++) {
+		s_cos_in += t_cos[x] * output_lin[-x];
+		s_sin_in += t_sin[x] * output_lin[-x];
 	}
 
 	atomic_lock();

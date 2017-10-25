@@ -85,7 +85,7 @@ class qas_block_filter {
 public:
 	qas_block_filter(double amp, double low_hz, double high_hz);
 	~qas_block_filter() { delete descr; };
-	void do_mon_block_in(const double *, size_t samples);
+	void do_mon_block_in(const double *, ssize_t samples);
 	void do_reset();
 	qas_block_filter_entry_t entry;
 	QString *descr;
