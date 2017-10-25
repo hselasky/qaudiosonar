@@ -306,21 +306,21 @@ qas_dsp_audio_analyzer(void *arg)
 		TAILQ_FOREACH(f, &qas_filter_head, entry)
 			num++;
 
-		size_t samples = (QAS_MON_SIZE - peak_x) * num;
+		unsigned samples = peak_x * num;
 		if (samples > 65536)
 			samples = 65536;
-
 		if (num == 0)
 			num = 1;
-
 		samples /= num;
 		if (samples == 0)
 			samples = 1;
+		if (samples > peak_x)
+			samples = peak_x;
 
 		TAILQ_FOREACH(f, &qas_filter_head, entry) {
 			uint8_t band = num2band(f->num_index);
 
-			f->do_mon_block_in(qas_graph_data + peak_x, samples);
+			f->do_mon_block_in(qas_graph_data + peak_x - samples, samples);
 			f->power[qas_power_index] = f->t_amp;
 			if (qas_band_power[qas_power_index][band] < f->t_amp)
 				qas_band_power[qas_power_index][band] = f->t_amp;
