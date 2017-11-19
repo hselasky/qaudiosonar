@@ -106,7 +106,7 @@ QasBandPassBox :: QasBandPassBox()
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(1, QAS_SAMPLE_RATE / 2);
+	pSB->setRange(1, qas_sample_rate / 2);
 	pSB->setSingleStep(1);
 	pSB->setValue(1);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
@@ -129,7 +129,7 @@ QasBandWidthBox :: QasBandWidthBox()
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(1, QAS_SAMPLE_RATE);
+	pSB->setRange(1, qas_sample_rate);
 	pSB->setSingleStep(1);
 	pSB->setValue(20);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
@@ -288,7 +288,7 @@ qas_low_pass(double freq, double *factor, size_t window_size)
 	int wh = window_size / 2;
 	int x;
 
-	freq /= (double)QAS_SAMPLE_RATE;
+	freq /= (double)qas_sample_rate;
 	freq *= (double)wh;
 
 	factor[wh] += (2.0 * freq) / ((double)wh);
@@ -306,14 +306,19 @@ static void
 qas_band_pass(double freq_low, double freq_high,
     double *factor, size_t window_size)
 {
+	double low = qas_sample_rate / window_size;
+	double high = qas_sample_rate / 2;
+
+	if (low < 1.0)
+		low = 1.0;
 	/* lowpass */
-	if (freq_low < (QAS_SAMPLE_RATE / window_size))
-		freq_low = (QAS_SAMPLE_RATE / window_size);
+	if (freq_low < low)
+		freq_low = low;
 	qas_low_pass(freq_low, factor, window_size);
 
 	/* highpass */
-	if (freq_high >= (QAS_SAMPLE_RATE / 2))
-		freq_high = (QAS_SAMPLE_RATE / 2);
+	if (freq_high >= high)
+		freq_high = high;
 	qas_low_pass(-freq_high, factor, window_size);
 }
 
@@ -485,8 +490,8 @@ drawGraph(QPainter &paint, struct qas_corr *temp,
 		str = QString("CORRELATION MAX=%1dB@%2samples;%3ms;%4m      "
 			      "SELECTION MAX=%5dB")
 		    .arg(10.0 * log(max) / log(10)).arg(z)
-		    .arg((double)((int)((z * 100000) / QAS_SAMPLE_RATE) / 100.0))
-		    .arg((double)((int)((z * 34000) / QAS_SAMPLE_RATE) / 100.0))
+		    .arg((double)((int)((z * 100000ULL) / qas_sample_rate) / 100.0))
+		    .arg((double)((int)((z * 34000ULL) / qas_sample_rate) / 100.0))
 		    .arg(10.0 * log(peak_sel) / log(10));
 		break;
 	case TYPE_AMP:
@@ -1364,8 +1369,10 @@ main(int argc, char **argv)
 		switch (c) {
 		case 'r':
 			qas_sample_rate = atoi(optarg);
-			if (qas_sample_rate < 1)
-				qas_sample_rate = 1;
+			if (qas_sample_rate < 8000)
+				qas_sample_rate = 8000;
+			else if (qas_sample_rate > 96000)
+				qas_sample_rate = 96000;
 			break;
 		default:
 			usage();
