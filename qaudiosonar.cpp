@@ -32,6 +32,8 @@ static pthread_mutex_t atomic_graph;
 static pthread_mutex_t atomic_filter;
 static pthread_cond_t atomic_cv;
 
+int qas_number_bands = QAS_BAND_DEFAULT;
+
 #define	QAS_STANDARD_AUDIO_BANDS 31
 
 static const double qas_freq_table[QAS_STANDARD_AUDIO_BANDS] = {
@@ -633,7 +635,7 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 		temp[x].band = x;
 	}
 
-	mergesort(temp + 1, (QAS_BAND_SIZE - 1) / 2, 2 * sizeof(temp[0]), &qas_band_power_compare);
+	mergesort(temp + 1, QAS_SCALE_SIZE / 2, 2 * sizeof(temp[0]), &qas_band_power_compare);
 
 	for (unsigned x = 0; x != QAS_BAND_SIZE; x++)
 		mapping[x] = temp[x].band;
@@ -671,9 +673,6 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_filter_unlock();
 
 	for (unsigned y = 0; y != QAS_HISTORY_SIZE; y++) {
-		enum {
-			NUM = QAS_BAND_SIZE - 1,
-		};
 		double max = 0;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
 			if (band[y][mapping[x]].power > max)
@@ -682,8 +681,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 		if (max == 0)
 			max = 1;
 		for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
-			QRectF rect((w * (x - 1)) / NUM, (h * y) / QAS_HISTORY_SIZE,
-			    (w + 11) / NUM, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
+			QRectF rect((w * (x - 1)) / QAS_SCALE_SIZE, (h * y) / QAS_HISTORY_SIZE,
+			    (w + 11) / QAS_SCALE_SIZE, (h + QAS_HISTORY_SIZE - 1) / QAS_HISTORY_SIZE);
 
 			double code = (band[y][mapping[x]].power * 255LL) / max;
 			if (code > 255)
@@ -701,6 +700,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	last_pi = pi;
 
 	QFont fnt(paint.font());
+	qreal max_height = 0;
 
 	fnt.setPixelSize(16);
 	paint.setFont(fnt);
@@ -714,9 +714,23 @@ QasBand :: paintEvent(QPaintEvent *event)
 		if (key % 2)
 			continue;
 		QString str = QString(qas_band_to_key(key / 2)).arg(5);
-		qreal xs = (qreal)w / 24.0;
-		paint.drawText(QPoint(-h, xs * (x - 1) + 8 + xs), str);
+		qreal xs = (qreal)w / (qreal)QAS_SCALE_SIZE;
+		QRectF rect;
+		paint.drawText(QRectF(-h, xs * x + 8 - 2 * xs, w,h), Qt::AlignLeft, str, &rect);
 		paint.drawRect(QRectF(-h, xs * (x - 1), 16, 2));
+
+		if (rect.width() > max_height)
+			max_height = rect.width();
+	}
+
+	for (unsigned x = 1; x != QAS_BAND_SIZE; x++) {
+		uint8_t key = mapping[x] - 1;
+		if (key % 2)
+			continue;
+		QString str = QString(qas_band_to_key(key / 2)).arg(5);
+		qreal xs = (qreal)w / (qreal)QAS_SCALE_SIZE;
+		paint.drawText(QRectF(-max_height, xs * x + 8 - 2 * xs, w,h), Qt::AlignLeft, str);
+		paint.drawRect(QRectF(-max_height, xs * (x - 1), 16, 2));
 	}
 
 	paint.rotate(90);
@@ -997,7 +1011,7 @@ QasMainWindow :: QasMainWindow()
 	spn = new QSpinBox();
 	spn->setRange(1,1024);
 	spn->setSuffix(tr(" bands"));
-	spn->setValue(240);
+	spn->setValue(qas_number_bands);
 	gl->addWidget(spn, 1,3,1,1);
 	
 	pb = new QPushButton(tr("AddLog"));
@@ -1200,10 +1214,9 @@ QasMainWindow :: handle_add_piano()
 	double hf;
 	double pf;
 
-	/* must be divisible by 24 */
-	max_bands += (24 - (max_bands % 24)) % 24;
+	QAS_BAND_ALIGN(max_bands);
 
-	pf = pow(2.0, 1.0 / 24.0);
+	pf = pow(2.0, 1.0 / (double)QAS_SCALE_SIZE);
 
 	x = max_bands;
 	y = x - (max_bands / 2);
@@ -1227,14 +1240,14 @@ QasMainWindow :: handle_add_piano()
 
 		f = new qas_block_filter(sqrt(max_width / (hf - lf)), lf, hf);
 
-		f->num_index = y + (2 * 9) + (5 * 24);
+		f->num_index = y + ((QAS_SCALE_SIZE / 12) * 9) + (5 * QAS_SCALE_SIZE);
 		f->iso_index = qas_find_iso(cf);
 
-		octave = f->num_index / 24;
+		octave = f->num_index / QAS_SCALE_SIZE;
 
 		if (f->num_index % 2) {
 			str = "";
-		} else switch ((f->num_index % 24) / 2) {
+		} else switch ((f->num_index % QAS_SCALE_SIZE) / 2) {
 		case 9:
 			str = QString(" - A%1").arg(octave);
 			break;
@@ -1365,8 +1378,16 @@ main(int argc, char **argv)
         /* must be first, before any threads are created */
         signal(SIGPIPE, SIG_IGN);
 	
-	while ((c = getopt(argc, argv, "r:h")) != -1) {
+	while ((c = getopt(argc, argv, "r:b:h")) != -1) {
 		switch (c) {
+		case 'b':
+			qas_number_bands = atoi(optarg);
+			if (qas_number_bands < QAS_SCALE_SIZE)
+				qas_number_bands = QAS_SCALE_SIZE;
+			else if (qas_number_bands > QAS_BAND_MAX)
+				qas_number_bands = QAS_BAND_MAX;
+			QAS_BAND_ALIGN(qas_number_bands);
+			break;
 		case 'r':
 			qas_sample_rate = atoi(optarg);
 			if (qas_sample_rate < 8000)

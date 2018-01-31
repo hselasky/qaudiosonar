@@ -65,7 +65,11 @@
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_MON_SIZE	((QAS_SAMPLE_RATE / 2) - ((QAS_SAMPLE_RATE / 2) % QAS_MUL_SIZE))
 #define	QAS_MON_COUNT	(QAS_MON_SIZE / QAS_MUL_SIZE)
-#define	QAS_BAND_SIZE	25
+#define	QAS_SCALE_SIZE	24
+#define	QAS_BAND_SIZE	(QAS_SCALE_SIZE + 1)
+#define	QAS_BAND_ALIGN(x) x += (QAS_SCALE_SIZE - ((x) % QAS_SCALE_SIZE)) % QAS_SCALE_SIZE
+#define	QAS_BAND_DEFAULT 240
+#define	QAS_BAND_MAX	 2400
 #define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
 
 #if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
@@ -343,6 +347,7 @@ extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
 extern char midi_write_device[1024];
 extern int qas_sample_rate;
+extern int qas_number_bands;
 extern int qas_source_0;
 extern int qas_source_1;
 extern int qas_output_0;
@@ -360,7 +365,7 @@ extern double qas_view_decay;
 static inline unsigned int
 num2band(unsigned num)
 {
-	return (1 + (num % (QAS_BAND_SIZE - 1)));
+	return (1 + (num % QAS_SCALE_SIZE));
 }
 
 void dsp_put_sample(struct dsp_buffer *, double);
