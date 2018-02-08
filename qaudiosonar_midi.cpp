@@ -43,7 +43,7 @@ qas_midi_key_send(uint8_t key, uint8_t vel)
 	atomic_unlock();
 }
 
-void *
+static void *
 qas_midi_write_thread(void *)
 {
 	static char fname[1024];
@@ -98,4 +98,12 @@ qas_midi_write_thread(void *)
 		}
 	}
 	return (0);
+}
+
+void
+qas_midi_init()
+{
+	pthread_t td;
+
+	pthread_create(&td, NULL, &qas_midi_write_thread, NULL);
 }

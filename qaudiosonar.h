@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2017 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2018 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -63,46 +63,10 @@
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
-#define	QAS_MON_SIZE	((QAS_SAMPLE_RATE / 2) - ((QAS_SAMPLE_RATE / 2) % QAS_MUL_SIZE))
-#define	QAS_MON_COUNT	(QAS_MON_SIZE / QAS_MUL_SIZE)
-#define	QAS_SCALE_SIZE	24
-#define	QAS_BAND_SIZE	(QAS_SCALE_SIZE + 1)
-#define	QAS_BAND_ALIGN(x) x += (QAS_SCALE_SIZE - ((x) % QAS_SCALE_SIZE)) % QAS_SCALE_SIZE
-#define	QAS_BAND_DEFAULT 240
-#define	QAS_BAND_MAX	 2400
-#define	QAS_HISTORY_SIZE (QAS_SAMPLE_RATE * 8 / QAS_MUL_SIZE)
 
-#if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0 || QAS_MON_SIZE == 0)
+#if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0)
 #error "Invalid parameters"
 #endif
-
-struct qas_band_info {
-	double power;
-	unsigned band;
-};
-
-class qas_block_filter;
-typedef TAILQ_CLASS_ENTRY(qas_block_filter) qas_block_filter_entry_t;
-typedef TAILQ_CLASS_HEAD(,qas_block_filter) qas_block_filter_head_t;
-
-class qas_block_filter {
-public:
-	qas_block_filter(double amp, double low_hz, double high_hz);
-	~qas_block_filter() { delete descr; };
-	void do_mon_block_in(const double *, ssize_t samples);
-	void do_reset();
-	qas_block_filter_entry_t entry;
-	QString *descr;
-	double power[QAS_HISTORY_SIZE];
-	double t_cos[QAS_MON_SIZE];
-	double t_sin[QAS_MON_SIZE];
-	double t_amp;
-	double t_phase;
-	double freq;
-	uint32_t tag;
-	uint8_t iso_index;
-	uint8_t num_index;
-};
 
 class QasBandPassBox : public QGroupBox {
 	Q_OBJECT;
@@ -180,12 +144,6 @@ public slots:
 	void handle_filter_0(int);
 };
 
-typedef enum {
-	VIEW_AMP_LIN,
-	VIEW_AMP_LOG,
-	VIEW_PHASE_LIN,
-} QasView_t;
-
 class QasView : public QWidget {
 	Q_OBJECT
 public:
@@ -196,11 +154,9 @@ public:
 
 	QGridLayout *gl;
 
-	QasButtonMap *map_view_0;
 	QasButtonMap *map_decay_0;
 
 public slots:
-	void handle_view_0(int);
 	void handle_decay_0(int);
 };
 
@@ -211,12 +167,10 @@ public:
 	~QasBand() { };
 	QasMainWindow *mw;
 	QTimer *watchdog;
-	unsigned last_pi;
-	uint8_t mapping[QAS_BAND_SIZE];
-	struct qas_band_info band[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
 
 	void paintEvent(QPaintEvent *);
 	void mousePressEvent(QMouseEvent *);
+	void mouseMoveEvent(QMouseEvent *);
 
 public slots:
 	void handle_watchdog();
@@ -303,35 +257,140 @@ class QasMainWindow : public QWidget {
 public:
 	QasMainWindow();
 	~QasMainWindow() { };
-	void update_sb();
 	void update_qr();
 
 	QasConfig *qc;
 	QasView *qv;
 	QasRecord *qr;
 	QGridLayout *gl;
-	QScrollBar *sb;
 	QScrollBar *sb_zoom;
 	QasBand *qb;
 	QasGraph *qg;
 	QLineEdit *led_dsp_read;
 	QLineEdit *led_dsp_write;
 	QLineEdit *led_midi_write;
-	QSpinBox *spn;
 
 public slots:
 	void handle_apply();
 	void handle_reset();
-	void handle_del_all();
-	void handle_add_log();
-	void handle_add_lin();
-	void handle_add_piano();
 	void handle_tog_freeze();
 	void handle_slider(int);
 	void handle_show_record();
 	void handle_config();
 	void handle_view();
 };
+
+int qas_band_power_compare(const void *, const void *);
+int qas_band_number_compare(const void *, const void *);
+
+/* ============== GENERIC SUPPORT ============== */
+
+extern int qas_num_workers;
+extern size_t qas_in_sequence_number;
+extern size_t qas_out_sequence_number;
+extern size_t qas_window_size;
+extern int qas_sample_rate;
+extern int qas_source_0;
+extern int qas_source_1;
+extern int qas_output_0;
+extern int qas_output_1;
+extern int qas_freeze;
+extern double qas_view_decay;
+
+void atomic_lock();
+void atomic_unlock();
+void atomic_graph_lock();
+void atomic_graph_unlock();
+void atomic_wait();
+void atomic_wakeup();
+
+/* ============== MULTIPLY SUPPORT ============== */
+
+void qas_x3_multiply_double(double *, double *, double *, const size_t);
+
+/* ============== WAVE SUPPORT ============== */
+
+#define	QAS_WAVE_STEP 16
+
+extern double **qas_cos_table;
+extern double **qas_sin_table;
+extern double *qas_freq_table;
+extern uint8_t *qas_iso_table;
+extern size_t qas_num_bands;
+extern QString *qas_descr_table;
+
+struct qas_wave_job {
+	TAILQ_ENTRY(qas_wave_job) entry;
+	size_t data_offset;
+	size_t band_start;
+	struct qas_corr_out_data *data;
+};
+
+extern struct qas_wave_job *qas_wave_job_alloc();
+extern void qas_wave_job_insert(struct qas_wave_job *);
+extern struct qas_wave_job *qas_wave_job_dequeue();
+extern int qas_wave_job_free(qas_wave_job *);
+extern void qas_wave_signal();
+extern void qas_wave_wait();
+extern void qas_wave_lock();
+extern void qas_wave_unlock();
+extern void qas_wave_init();
+
+/* ============== CORRELATION SUPPORT ============== */
+
+#define	QAS_CORR_SIZE QAS_MUL_SIZE
+
+struct qas_corr_in_data {
+	TAILQ_ENTRY(qas_corr_in_data) entry;
+	size_t sequence_number;
+	double data[];
+};
+
+struct qas_corr_out_data {
+	TAILQ_ENTRY(qas_corr_in_data) entry;
+	size_t sequence_number;
+	size_t refcount;
+	double data_array[];
+};
+
+extern double *qas_mon_decay;
+extern struct qas_corr_in_data *qas_corr_in_alloc(size_t);
+extern void qas_corr_in_free(struct qas_corr_in_data *);
+extern struct qas_corr_out_data *qas_corr_out_alloc(size_t);
+extern void qas_corr_out_free(struct qas_corr_out_data *);
+extern void qas_corr_in_insert(struct qas_corr_in_data *);
+extern struct qas_corr_in_data *qas_corr_in_job_dequeue();
+extern void qas_corr_signal();
+extern void qas_corr_wait();
+extern void qas_corr_lock();
+extern void qas_corr_unlock();
+extern void qas_corr_init();
+
+/* ============== DISPLAY SUPPORT ============== */
+
+extern double *qas_display_data;
+extern size_t qas_display_hist_max;	/* power of two */
+
+extern void qas_display_job_insert(struct qas_wave_job *);
+extern struct qas_wave_job *qas_display_job_dequeue();
+extern void qas_display_signal();
+extern void qas_display_wait();
+extern void qas_display_lock();
+extern void qas_display_unlock();
+extern void qas_display_init();
+extern double *qas_display_get_line(size_t);
+extern size_t qas_display_width();
+extern size_t qas_display_height();
+extern size_t qas_display_lag();
+
+/* ============== ISO SUPPORT ============== */
+
+#define	QAS_STANDARD_AUDIO_BANDS 31
+
+extern const double qas_iso_freq_table[QAS_STANDARD_AUDIO_BANDS];
+extern uint8_t qas_find_iso(double cf);
+
+/* ============== OSS DSP SUPPORT ============== */
 
 struct dsp_buffer {
 	double buffer[QAS_BUFFER_SIZE];
@@ -340,64 +399,25 @@ struct dsp_buffer {
 	unsigned out_off;
 };
 
-extern qas_block_filter_head_t qas_filter_head;
-extern struct dsp_buffer qas_read_buffer[2];
-extern struct dsp_buffer qas_write_buffer[2];
 extern char dsp_read_device[1024];
 extern char dsp_write_device[1024];
+extern double qas_band_pass_filter[QAS_CORR_SIZE];
+
+extern void qas_dsp_init();
+extern void dsp_put_sample(struct dsp_buffer *, double);
+extern double dsp_get_sample(struct dsp_buffer *);
+extern double dsp_get_monitor_sample(struct dsp_buffer *);
+extern unsigned dsp_write_space(struct dsp_buffer *);
+extern unsigned dsp_read_space(struct dsp_buffer *);
+extern unsigned dsp_monitor_space(struct dsp_buffer *);
+extern void qas_dsp_sync(void);
+
+/* ============== MIDI SUPPORT ============== */
+
 extern char midi_write_device[1024];
-extern int qas_sample_rate;
-extern int qas_number_bands;
-extern int qas_source_0;
-extern int qas_source_1;
-extern int qas_output_0;
-extern int qas_output_1;
-extern int qas_freeze;
-extern double qas_graph_data[QAS_MON_SIZE];
-extern double qas_band_pass_filter[QAS_MUL_SIZE];
-extern double qas_band_power[QAS_HISTORY_SIZE][QAS_BAND_SIZE];
-extern double dsp_rd_mon_filter[QAS_MON_COUNT][QAS_MUL_SIZE];
-extern unsigned qas_power_index;
 extern double qas_midi_level;
-extern QasView_t qas_view_what;
-extern double qas_view_decay;
 
-static inline unsigned int
-num2band(unsigned num)
-{
-	return (1 + (num % QAS_SCALE_SIZE));
-}
-
-void dsp_put_sample(struct dsp_buffer *, double);
-double dsp_get_sample(struct dsp_buffer *);
-double dsp_get_monitor_sample(struct dsp_buffer *);
-unsigned dsp_write_space(struct dsp_buffer *);
-unsigned dsp_read_space(struct dsp_buffer *);
-unsigned dsp_monitor_space(struct dsp_buffer *);
-
-void atomic_lock();
-void atomic_unlock();
-void atomic_graph_lock();
-void atomic_graph_unlock();
-void atomic_filter_lock();
-void atomic_filter_unlock();
-void atomic_wait();
-void atomic_wakeup();
-
-void *qas_dsp_audio_producer(void *);
-void *qas_dsp_audio_analyzer(void *);
-void *qas_dsp_write_thread(void *);
-void *qas_dsp_read_thread(void *);
-void *qas_midi_write_thread(void *);
-void qas_midi_key_send(uint8_t, uint8_t);
-
-void qas_dsp_sync(void);
-
-void qas_x3_multiply_double(double *, double *, double *, const size_t);
-
-void qas_queue_block_filter(qas_block_filter *, qas_block_filter_head_t *);
-
-int qas_band_power_compare(const void *, const void *);
-int qas_band_number_compare(const void *, const void *);
+extern void qas_midi_init();
+extern void qas_midi_key_send(uint8_t, uint8_t);
 
 #endif			/* _QAUDIOSONAR_H_ */
