@@ -56,6 +56,7 @@
 #include <QMouseEvent>
 #include <QPlainTextEdit>
 #include <QGroupBox>
+#include <QImage>
 
 #define	QAS_SAMPLE_RATE	48000
 #define	QAS_MIDI_BUFSIZE 1024
@@ -189,99 +190,34 @@ public slots:
 	void handle_watchdog();
 };
 
-class QasRecord;
-class QasRecordEntry;
-typedef TAILQ_CLASS_ENTRY(QasRecordEntry) QasRecordEntry_t;
-typedef TAILQ_CLASS_HEAD(,QasRecordEntry) QasRecordEntryHead_t;
-
-class QasRecordShow : public QWidget {
-	Q_OBJECT
-public:
-	QasRecordShow(QasRecord *);
-	~QasRecordShow() { };
-	QasRecord *qr;
-	void paintEvent(QPaintEvent *);
-	void mousePressEvent(QMouseEvent *);
-	void keyPressEvent(QKeyEvent *);
-};
-
-class QasRecordEntry {
-public:
-	QasRecordEntry(const unsigned n) {
-		pvalue = (double *)malloc(8 * n);
-		pdesc = new QString [n];
-		num = n;
-	};
-	~QasRecordEntry() {
-		free(pvalue);
-		delete [] pdesc;
-	};
-	QasRecordEntry_t entry;
-	QString comment;
-	QString *pdesc;
-	double *pvalue;
-	unsigned num;
-};
-
-class QasRecord : public QWidget {
-	Q_OBJECT
-public:
-	QasRecord();
-	~QasRecord();
-
-	QasRecordEntryHead_t head;
-	QPoint select;
-
-	QGridLayout *gl;
-	QPlainTextEdit *pEdit;
-	QPushButton *pButReset;
-	QPushButton *pButToggle;
-	QPushButton *pButInsert;
-	QScrollBar *pSB;
-	QSpinBox *pSpin;
-	QasRecordShow *pShow;
-	QLineEdit *pLabel;
-	int do_record;
-
-	void insert_entry(QasRecordEntry *);
-
-public slots:
-	void handle_reset();
-	void handle_toggle();
-	void handle_insert();
-	void handle_slider(int);
-};
-
 class QasMainWindow : public QWidget {
 	Q_OBJECT
 public:
 	QasMainWindow();
 	~QasMainWindow() { };
-	void update_qr();
 
 	QasConfig *qc;
 	QasView *qv;
-	QasRecord *qr;
 	QGridLayout *gl;
+	QGridLayout *glb;
 	QScrollBar *sb_zoom;
+	QScrollBar *sb_band;
+	QWidget *qbw;
 	QasBand *qb;
 	QasGraph *qg;
 	QLineEdit *led_dsp_read;
 	QLineEdit *led_dsp_write;
 	QLineEdit *led_midi_write;
+	QPlainTextEdit *edit;
 
 public slots:
 	void handle_apply();
 	void handle_reset();
 	void handle_tog_freeze();
 	void handle_slider(int);
-	void handle_show_record();
 	void handle_config();
 	void handle_view();
 };
-
-int qas_band_power_compare(const void *, const void *);
-int qas_band_number_compare(const void *, const void *);
 
 /* ============== GENERIC SUPPORT ============== */
 

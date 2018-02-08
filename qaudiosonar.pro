@@ -17,7 +17,6 @@ SOURCES		+= qaudiosonar_mul.cpp
 SOURCES		+= qaudiosonar_oss.cpp
 SOURCES         += qaudiosonar_correlation.cpp
 SOURCES         += qaudiosonar_display.cpp
-SOURCES         += qaudiosonar_record.cpp
 SOURCES         += qaudiosonar_wave.cpp
 RESOURCES	+= qaudiosonar.qrc
 TARGET          = qaudiosonar

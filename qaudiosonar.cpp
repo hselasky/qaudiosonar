@@ -341,7 +341,14 @@ QasGraph :: QasGraph(QasMainWindow *_mw)
 void
 QasBand :: mousePressEvent(QMouseEvent *event)
 {
-	update();
+	if (event->button() == Qt::RightButton) {
+		mw->edit->appendPlainText("");
+	} else {
+		enum { MAX = (QAS_WAVE_STEP * 12) };
+		int band = (MAX * event->x()) / width();
+		if (band > -1 && band < MAX)
+			mw->edit->appendPlainText(qas_descr_table[band]);
+	}
 }
 
 void
@@ -364,9 +371,12 @@ QasBand :: paintEvent(QPaintEvent *event)
 	size_t hd = qas_display_height();
 	size_t hi = hd / 2 + 1;
 	size_t wi = qas_display_width() / 2;
+	int offset = mw->sb_band->value();
 
 	if (w == 0 || h == 0)
 		return;
+
+	offset = (MAX + (offset % MAX)) % MAX;
 
 	QPainter paint(this);
 	QColor white(255,255,255);
@@ -387,10 +397,10 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 		double temp[MAX] = {};
 		double simp[12] = {};
-		
+
 		for (x = 0; x != wi; x++) {
-			if (data[2 * x] > temp[x % MAX])
-				temp[x % MAX] = data[2 * x];
+			if (data[2 * x] > temp[(x + offset) % MAX])
+				temp[(x + offset) % MAX] = data[2 * x];
 		}
 
 		for (z = x = 0; x != MAX; x++) {
@@ -683,7 +693,6 @@ QasBand :: handle_watchdog()
 void
 QasGraph :: handle_watchdog()
 {
-	mw->update_qr();
 	update();
 }
 
@@ -691,7 +700,6 @@ QasMainWindow :: QasMainWindow()
 {
 	QPushButton *pb;
 
-	qr = new QasRecord();
 	qc = new QasConfig(this);
 	qv = new QasView(this);
 
@@ -704,6 +712,11 @@ QasMainWindow :: QasMainWindow()
 	sb_zoom->setRange(0, qas_window_size - 1);
 	sb_zoom->setSingleStep(1);
 	sb_zoom->setValue(0);
+
+	sb_band = new QScrollBar(Qt::Horizontal);
+	sb_band->setRange(-QAS_WAVE_STEP + 1, QAS_WAVE_STEP - 1);
+	sb_band->setSingleStep(1);
+	sb_band->setValue(0);
 
 	gl->addWidget(new QLabel(tr("DSP RX:")), 0,0,1,1);
 
@@ -732,23 +745,28 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_config()));
 	gl->addWidget(pb, 0,7,1,1);
        
-	pb = new QPushButton(tr("TogFrz"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
-	gl->addWidget(pb, 0,6,1,1);
-
 	pb = new QPushButton(tr("ViewConfig"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_view()));
-	gl->addWidget(pb, 1,6,1,1);
-
-	pb = new QPushButton(tr("ShowRecord"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_show_record()));
 	gl->addWidget(pb, 1,7,1,1);
 
-	gl->addWidget(qb, 0,8,6,2);
+	pb = new QPushButton(tr("TogFrz"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
+	gl->addWidget(pb, 0,6,2,1);
+
+	edit = new QPlainTextEdit();
+	
+	qbw = new QWidget();
+	glb = new QGridLayout(qbw);
+
+	gl->addWidget(qbw, 0,8,6,2);
 	gl->addWidget(sb_zoom, 3,0,1,8);
 	gl->addWidget(qg, 4,0,2,8);
-
 	gl->setRowStretch(2,1);
+
+	glb->addWidget(sb_band, 0,0,1,1);
+	glb->addWidget(qb, 1,0,1,1);
+	glb->addWidget(edit, 2,0,1,1);
+	glb->setRowStretch(1,1);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.5"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -813,17 +831,6 @@ QasMainWindow :: handle_tog_freeze()
 	atomic_lock();
 	qas_freeze = !qas_freeze;
 	atomic_unlock();
-}
-
-void
-QasMainWindow :: handle_show_record()
-{
-	qr->show();
-}
-
-void
-QasMainWindow :: update_qr()
-{
 }
 
 static void
