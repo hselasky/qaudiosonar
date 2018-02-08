@@ -749,7 +749,7 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_view()));
 	gl->addWidget(pb, 1,7,1,1);
 
-	pb = new QPushButton(tr("TogFrz"));
+	pb = new QPushButton(tr("Toggle\nFreeze"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 0,6,2,1);
 
