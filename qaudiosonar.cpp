@@ -398,12 +398,16 @@ QasBand :: paintEvent(QPaintEvent *event)
 		double max;
 		size_t x, z;
 
-		double temp[MAX] = {};
+		double temp[MAX];
 		double simp[12] = {};
 
+		for (x = 0; x != MAX; x++)
+			temp[x] = 1.0;
+
 		for (x = 0; x != wi; x++) {
-			if (data[2 * x] > temp[(x + offset) % MAX])
-				temp[(x + offset) % MAX] = data[2 * x];
+			if (data[2 * x] < 1.0)
+				continue;
+			temp[(x + offset) % MAX] *= data[2 * x];
 		}
 
 		for (z = x = 0; x != MAX; x++) {
