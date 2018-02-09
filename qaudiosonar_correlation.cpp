@@ -144,6 +144,7 @@ qas_corr_worker(void *arg)
 		for (size_t x = 0; x != qas_window_size; x++) {
 			qas_mon_decay[x] *= qas_view_decay;
 			qas_mon_decay[x] += pout->data_array[x + QAS_CORR_SIZE];
+			pout->data_array[x + QAS_CORR_SIZE] = qas_mon_decay[x];
 		}
 		atomic_graph_unlock();
 
