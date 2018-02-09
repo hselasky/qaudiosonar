@@ -231,8 +231,8 @@ QasView :: QasView(QasMainWindow *_mw)
 	gl = new QGridLayout(this);
 
 	map_decay_0 = new QasButtonMap("Decay selection\0"
-				       "1/8\0" "1/16\0" "1/32\0"
-				       "1/64\0" "1/128\0" "1/256\0", 6, 6);
+				       "OFF\0" "1/8\0" "1/16\0" "1/32\0"
+				       "1/64\0" "1/128\0" "1/256\0", 7, 4);
 
 	connect(map_decay_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_decay_0(int)));
 
@@ -246,7 +246,10 @@ void
 QasView :: handle_decay_0(int _value)
 {
 	atomic_graph_lock();
-	qas_view_decay = 1.0 - 1.0 / (1 << (_value + 3));
+	if (_value == 0)
+		qas_view_decay = 0.0;
+	else
+		qas_view_decay = 1.0 - 1.0 / pow(2.0, _value + 2);
 	atomic_graph_unlock();
 }
 

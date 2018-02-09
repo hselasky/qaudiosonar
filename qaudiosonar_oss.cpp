@@ -35,7 +35,7 @@ char dsp_read_device[1024];
 char dsp_write_device[1024];
 double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_midi_level = 1LL << 62;
-double qas_view_decay = 1.0 - 1.0 / 8.0;
+double qas_view_decay = 0;
 
 static struct dsp_buffer qas_read_buffer[2];
 static struct dsp_buffer qas_write_buffer[2];

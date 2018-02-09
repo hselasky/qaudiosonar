@@ -125,8 +125,8 @@ qas_wave_analyze(double *indata, double *pcos, double *psin, double *out)
 		sin_in += psin[x] * indata[0];
 	}
 
-	cos_in /= (double)qas_window_size;
-	sin_in /= (double)qas_window_size;
+	cos_in /= (double)qas_window_size * 0.5;
+	sin_in /= (double)qas_window_size * 0.5;
 
 	out[0] = sqrt(cos_in * cos_in + sin_in * sin_in);
 	if (out[0] < 1.0) {
@@ -158,6 +158,8 @@ qas_wave_analyze(double *indata, double *pcos, double *psin, double *out)
 			out[1] += 2.0 * M_PI;
 		if (out[1] >= 2.0 * M_PI)
 			out[1] -= 2.0 * M_PI;
+
+		out[0] = sqrt(out[0]);
 	}
 }
 
