@@ -613,8 +613,8 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setRenderHints(QPainter::Antialiasing|
 			     QPainter::TextAntialiasing);
 
+	paint.drawImage(QRect(0,2*rg,w,2*rg), hist);
 	paint.drawImage(QRect(0,2*rg,w,rg), corr);
-	paint.drawImage(QRect(0,3*rg,w,rg), hist);
 	paint.drawImage(QRect(0,0,w,rg), iso);
 	paint.drawImage(QRect(0,0,w,rg), power);
 	paint.drawImage(QRect(0,rg,w,rg), phase);
