@@ -210,10 +210,14 @@ public:
 	QLineEdit *led_midi_write;
 	QPlainTextEdit *edit;
 
+signals:	
+	void handle_append_text(const QString);
+
 public slots:
 	void handle_apply();
 	void handle_reset();
 	void handle_tog_freeze();
+	void handle_tog_record();
 	void handle_slider(int);
 	void handle_config();
 	void handle_view();
@@ -231,7 +235,9 @@ extern int qas_source_1;
 extern int qas_output_0;
 extern int qas_output_1;
 extern int qas_freeze;
+extern int qas_record;
 extern double qas_view_decay;
+extern QasMainWindow *qas_mw;
 
 void atomic_lock();
 void atomic_unlock();
@@ -354,6 +360,6 @@ extern char midi_write_device[1024];
 extern double qas_midi_level;
 
 extern void qas_midi_init();
-extern void qas_midi_key_send(uint8_t, uint8_t);
+extern void qas_midi_key_send(uint8_t, uint8_t, uint8_t, uint8_t);
 
 #endif			/* _QAUDIOSONAR_H_ */

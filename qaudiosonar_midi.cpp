@@ -26,13 +26,14 @@
 #include "qaudiosonar.h"
 
 char	midi_write_device[1024];
-uint8_t midi_write_buffer[QAS_MIDI_BUFSIZE];
-size_t	midi_write_offset;
+static uint8_t midi_write_buffer[QAS_MIDI_BUFSIZE];
+static size_t midi_write_offset;
 
 void
-qas_midi_key_send(uint8_t key, uint8_t vel)
+qas_midi_key_send(uint8_t channel, uint8_t key, uint8_t vel, uint8_t delay)
 {
-	uint8_t temp[4] = { 0x90, (uint8_t)(key & 0x7F), (uint8_t)(vel & 0x7F), 0 };
+	const uint8_t temp[4] = { (uint8_t)(0x90 | channel),
+	    (uint8_t)(key & 0x7F), (uint8_t)(vel & 0x7F), delay };
 
 	atomic_lock();
 	if (midi_write_offset <= QAS_MIDI_BUFSIZE - sizeof(temp)) {
@@ -48,11 +49,12 @@ qas_midi_write_thread(void *)
 {
 	static char fname[1024];
 	uint8_t buffer[QAS_MIDI_BUFSIZE];
-	ssize_t offset;
+	size_t offset;
 	int f = -1;
 	int err;
 	int temp;
 
+top:
 	while (1) {
 		if (f > -1) {
 			close(f);
@@ -92,9 +94,14 @@ qas_midi_write_thread(void *)
 			}
 			atomic_unlock();
 
-			err = write(f, buffer, offset);
-			if (err != offset)
-				break;
+			for (size_t x = 0; x != offset; x += 4) {
+				uint8_t delay = buffer[3];
+				err = write(f, buffer + x, 3);
+				if (err != 3)
+					goto top;
+				if (delay != 0)
+					usleep(1000 * delay);
+			}
 		}
 	}
 	return (0);

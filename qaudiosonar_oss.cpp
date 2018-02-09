@@ -31,6 +31,7 @@ int	qas_source_1;
 int	qas_output_0;
 int	qas_output_1;
 int	qas_freeze;
+int	qas_record;
 char dsp_read_device[1024];
 char dsp_write_device[1024];
 double qas_band_pass_filter[QAS_CORR_SIZE];

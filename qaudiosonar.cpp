@@ -35,6 +35,7 @@ int qas_num_workers = 2;
 size_t qas_window_size;
 size_t qas_in_sequence_number;
 size_t qas_out_sequence_number;
+QasMainWindow *qas_mw;
 
 static void
 atomic_init(void)
@@ -760,6 +761,10 @@ QasMainWindow :: QasMainWindow()
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 0,6,2,1);
 
+	pb = new QPushButton(tr("RecordTog"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_record()));
+	gl->addWidget(pb, 2,2,1,1);
+	
 	edit = new QPlainTextEdit();
 	
 	qbw = new QWidget();
@@ -774,6 +779,8 @@ QasMainWindow :: QasMainWindow()
 	glb->addWidget(qb, 1,0,1,1);
 	glb->addWidget(edit, 2,0,1,1);
 	glb->setRowStretch(1,1);
+
+	connect(this, SIGNAL(handle_append_text(const QString)), edit, SLOT(appendPlainText(const QString &)));
 
 	setWindowTitle(tr("Quick Audio Sonar v1.5"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -840,6 +847,14 @@ QasMainWindow :: handle_tog_freeze()
 	atomic_unlock();
 }
 
+void
+QasMainWindow :: handle_tog_record()
+{
+	atomic_lock();
+	qas_record = !qas_record;
+	atomic_unlock();
+}
+
 static void
 usage(void)
 {
@@ -898,9 +913,8 @@ main(int argc, char **argv)
 	qas_midi_init();
 	qas_dsp_init();
 
-	QasMainWindow *mw = new QasMainWindow();
-
-	mw->show();
+	qas_mw = new QasMainWindow();
+	qas_mw->show();
 
 	return (app.exec());
 }

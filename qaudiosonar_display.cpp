@@ -86,17 +86,59 @@ qas_display_worker(void *arg)
 {
 	while (1) {
 		struct qas_wave_job *pjob;
+		double *ptr;
 
 		pjob = qas_display_job_dequeue();
+		ptr = qas_display_get_line(pjob->data->sequence_number);
 
 		atomic_graph_lock();
-		memcpy(qas_display_data + (pjob->band_start * 2) +
-		    (qas_num_bands * 2 * (pjob->data->sequence_number % qas_display_hist_max)),
+		memcpy(ptr + (pjob->band_start * 2),
 		    pjob->data->data_array + pjob->data_offset,
 		    sizeof(double) * 2 * QAS_WAVE_STEP);
 		atomic_graph_unlock();
 
-		qas_wave_job_free(pjob);
+		if (qas_wave_job_free(pjob)) {
+		  	enum { MAX = (QAS_WAVE_STEP * 12) };
+			size_t wi = qas_display_width() / 2;
+			double temp[MAX];
+			size_t x, z;
+			static size_t last_z = -1ULL;
+
+			for (x = 0; x != MAX; x++)
+				temp[x] = 1.0;
+			for (x = 0; x != wi; x++) {
+				if (ptr[2 * x] < 1.0)
+					continue;
+				temp[x % MAX] *= ptr[2 * x];
+			}
+			for (x = z = 0; x != MAX; x++) {
+				if (temp[x] > temp[z])
+					z = x;
+			}
+
+			if (z != last_z) {
+				uint8_t key = 5 * 12 + (z / 16);
+				uint8_t chan = 0;
+
+				if (z & 1)
+					chan |= 8;
+				if (z & 2)
+					chan |= 4;
+				if (z & 4)
+					chan |= 2;
+				if (z & 8)
+					chan |= 1;
+
+				if (qas_record != 0) {
+					qas_mw->handle_append_text(qas_descr_table[z] +
+					    QString(" /* %1 */").arg((ptr - qas_display_data) / (2* qas_num_bands)));
+
+					qas_midi_key_send(chan, key, 90, 50);
+					qas_midi_key_send(chan, key, 0, 0);
+				}
+				last_z = z;
+			}
+		}
 	}
 	return 0;
 }
@@ -104,7 +146,7 @@ qas_display_worker(void *arg)
 double *
 qas_display_get_line(size_t which)
 {
-	return (qas_display_data +  (qas_num_bands * 2 * (which % qas_display_hist_max)));
+	return (qas_display_data + (qas_num_bands * 2 * (which % qas_display_hist_max)));
 }
 
 size_t
