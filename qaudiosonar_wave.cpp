@@ -209,12 +209,12 @@ qas_wave_worker(void *arg)
 	return 0;
 }
 
-static const double qas_base_freq = 440.0;	/* Hz */
+static const double qas_base_freq = 440.0;	/* A-key in Hz */
 
 void
 qas_wave_init()
 {
-	const double min_hz = 16.0;
+	const double min_hz = 8.0;
 	const double max_hz = qas_sample_rate / 2.0;
 	double num_low_octave = 0;
 	double num_high_octave = 0;
@@ -253,8 +253,10 @@ qas_wave_init()
 		qas_iso_table[x] = qas_find_iso(qas_freq_table[x]);
 		qas_cos_table[x] = (double *)malloc(sizeof(double) * qas_window_size);
 		qas_sin_table[x] = (double *)malloc(sizeof(double) * qas_window_size);
-		qas_descr_table[x] = QString(map[(x / 16) % 12]).arg(x / (12 * 16));
-		if (x % 16) {
+		qas_descr_table[x] = QString(map[(x / QAS_WAVE_STEP) % 12])
+		    .arg((x + 9 * QAS_WAVE_STEP) / (12 * QAS_WAVE_STEP));
+
+		if (x % QAS_WAVE_STEP) {
 			size_t y = 0;
 			if (x & 1)
 				y |= 8;

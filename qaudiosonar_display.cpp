@@ -86,15 +86,17 @@ qas_display_worker(void *arg)
 {
 	while (1) {
 		struct qas_wave_job *pjob;
-		double *ptr;
+		double *data;
+		int band_max;
 
 		pjob = qas_display_job_dequeue();
-		ptr = qas_display_get_line(pjob->data->sequence_number);
+		data = qas_display_get_line(pjob->data->sequence_number);
 
 		atomic_graph_lock();
-		memcpy(ptr + (pjob->band_start * 2),
+		memcpy(data + (pjob->band_start * 2),
 		    pjob->data->data_array + pjob->data_offset,
 		    sizeof(double) * 2 * QAS_WAVE_STEP);
+		band_max = qas_mw->band_max;
 		atomic_graph_unlock();
 
 		if (qas_wave_job_free(pjob)) {
@@ -106,18 +108,26 @@ qas_display_worker(void *arg)
 
 			for (x = 0; x != MAX; x++)
 				temp[x] = 1.0;
+
 			for (x = 0; x != wi; x++) {
-				if (ptr[2 * x] < 1.0)
-					continue;
-				temp[x % MAX] *= ptr[2 * x];
+				for (z = 0; z != ((x > MAX) ? MAX : (x + 1)); z++) {
+					double value = data[2 * (x - z)];
+					if (value < 1.0)
+						continue;
+					value = pow(value, 3.0);
+					if (value > temp[x % MAX])
+						temp[x % MAX] = value;
+					break;
+				}
 			}
-			for (x = z = 0; x != MAX; x++) {
+			for (z = x = 0; x != MAX; x++) {
+				temp[x] = temp[x];
 				if (temp[x] > temp[z])
 					z = x;
 			}
-
-			if (z != last_z) {
-				uint8_t key = 5 * 12 + (z / 16);
+			if (temp[z] != 1.0 && z != last_z) {
+				int band = z + (band_max - (band_max % MAX));
+				int key = (band / QAS_WAVE_STEP) + 9;
 				uint8_t chan = 0;
 
 				if (z & 1)
@@ -129,12 +139,15 @@ qas_display_worker(void *arg)
 				if (z & 8)
 					chan |= 1;
 
-				if (qas_record != 0) {
-					qas_mw->handle_append_text(qas_descr_table[z] +
-					    QString(" /* %1 */").arg((ptr - qas_display_data) / (2* qas_num_bands)));
+				if (qas_record != 0 && band > -1 && (size_t)band < qas_num_bands) {
+					QString str(qas_descr_table[band]);
+					str += QString(" /* %1Hz */").arg((int)qas_freq_table[band]);
+					qas_mw->handle_append_text(str);
 
-					qas_midi_key_send(chan, key, 90, 50);
-					qas_midi_key_send(chan, key, 0, 0);
+					if (key > -1 && key < 128) {
+						qas_midi_key_send(chan, key, 90, 50);
+						qas_midi_key_send(chan, key, 0, 0);
+					}
 				}
 				last_z = z;
 			}

@@ -164,6 +164,7 @@ public slots:
 class QasBand : public QWidget {
 	Q_OBJECT
 public:
+	enum { MAX = 192 };
 	QasBand(QasMainWindow *);
 	~QasBand() { };
 	QasMainWindow *mw;
@@ -184,7 +185,10 @@ public:
 	~QasGraph() { };
 	QasMainWindow *mw;
 	QTimer *watchdog;
+
 	void paintEvent(QPaintEvent *);
+	void mousePressEvent(QMouseEvent *);
+	void mouseMoveEvent(QMouseEvent *);
 
 public slots:
 	void handle_watchdog();
@@ -196,12 +200,15 @@ public:
 	QasMainWindow();
 	~QasMainWindow() { };
 
+	size_t band_max;
+
 	QasConfig *qc;
 	QasView *qv;
 	QGridLayout *gl;
 	QGridLayout *glb;
 	QScrollBar *sb_zoom;
-	QScrollBar *sb_band;
+	QScrollBar *sb_band;	
+	QLabel *lbl_max;
 	QWidget *qbw;
 	QasBand *qb;
 	QasGraph *qg;
@@ -210,7 +217,7 @@ public:
 	QLineEdit *led_midi_write;
 	QPlainTextEdit *edit;
 
-signals:	
+signals:
 	void handle_append_text(const QString);
 
 public slots:
