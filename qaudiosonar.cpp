@@ -539,7 +539,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	for (size_t x = 0; x != wc; x++) {
 		size_t delta = (x > zoom) ? x - zoom : zoom - x;
 		mon_index[x] = mon_sum;
-		mon_sum += 1 + delta * delta;
+		mon_sum += wc * wc - delta * delta;
 	}
 	atomic_graph_lock();
 	do {
