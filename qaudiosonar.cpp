@@ -350,8 +350,9 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
+	  	int offset = mw->sb_band->value();
 		int band = (MAX * event->x()) / width() +
-		    (mw->band_max - (mw->band_max % MAX));
+		    (mw->band_max - (mw->band_max % MAX)) - offset;
 		if (band > -1 && (size_t)band < qas_num_bands) {
 			QString str(qas_descr_table[band]);
 			str += QString(" /* %1Hz */").arg((int)qas_freq_table[band]);
