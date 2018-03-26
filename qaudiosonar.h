@@ -261,8 +261,8 @@ void qas_x3_multiply_double(double *, double *, double *, const size_t);
 
 #define	QAS_WAVE_STEP 16
 
-extern double **qas_cos_table;
-extern double **qas_sin_table;
+extern double *qas_cos_table;
+extern double *qas_sin_table;
 extern double *qas_freq_table;
 extern uint8_t *qas_iso_table;
 extern size_t qas_num_bands;

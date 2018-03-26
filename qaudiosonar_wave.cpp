@@ -30,8 +30,8 @@ static pthread_mutex_t qas_wave_mutex;
 
 static TAILQ_HEAD(,qas_wave_job) qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
 
-double **qas_cos_table;
-double **qas_sin_table;
+double *qas_cos_table;
+double *qas_sin_table;
 double *qas_freq_table;
 uint8_t *qas_iso_table;
 QString *qas_descr_table;
@@ -113,16 +113,26 @@ qas_wave_unlock()
 }
 
 static void
-qas_wave_analyze(double *indata, double *pcos, double *psin, double *out)
+qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
 {
 	double cos_in = 0;
 	double sin_in = 0;
+	double t_cos = 1.0;
+	double t_sin = 0.0;
+	double n_cos;
+	double n_sin;
 
 	indata += qas_window_size + QAS_CORR_SIZE;
 
 	for (size_t x = 0; x != qas_window_size; x++, indata--) {
-		cos_in += pcos[x] * indata[0];
-		sin_in += psin[x] * indata[0];
+		cos_in += t_cos * indata[0];
+		sin_in += t_sin * indata[0];
+
+		/* compute next step by complex multiplication */
+		n_cos = t_cos * k_cos - t_sin * k_sin;
+		n_sin = t_cos * k_sin + t_sin * k_cos;
+		t_cos = n_cos;
+		t_sin = n_sin;
 	}
 
 	cos_in /= (double)qas_window_size * 0.5;
@@ -236,8 +246,8 @@ qas_wave_init()
 	
 	qas_num_bands = (size_t)(num_high_octave + num_low_octave) * 12 * QAS_WAVE_STEP;
 
-	qas_cos_table = (double **)malloc(sizeof(void *) * qas_num_bands);
-	qas_sin_table = (double **)malloc(sizeof(void *) * qas_num_bands);
+	qas_cos_table = (double *)malloc(sizeof(double) * qas_num_bands);
+	qas_sin_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_freq_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_iso_table = (uint8_t *)malloc(sizeof(uint8_t) * qas_num_bands);
 	qas_descr_table = new QString [qas_num_bands];
@@ -251,8 +261,6 @@ qas_wave_init()
 		qas_freq_table[x] = qas_base_freq *
 		    pow(2.0, (double)x / (double)(12.0 * QAS_WAVE_STEP) - num_low_octave);
 		qas_iso_table[x] = qas_find_iso(qas_freq_table[x]);
-		qas_cos_table[x] = (double *)malloc(sizeof(double) * qas_window_size);
-		qas_sin_table[x] = (double *)malloc(sizeof(double) * qas_window_size);
 		qas_descr_table[x] = QString(map[(x / QAS_WAVE_STEP) % 12])
 		    .arg((x + 9 * QAS_WAVE_STEP) / (12 * QAS_WAVE_STEP));
 
@@ -268,12 +276,10 @@ qas_wave_init()
 				y |= 1;
 			qas_descr_table[x] += QString(".%1").arg(y);
 		}
-		for (size_t y = 0; y != qas_window_size; y++) {
-			double r = 2.0 * M_PI * qas_freq_table[x] *
-			    (double)y / (double)qas_sample_rate;
-			qas_cos_table[x][y] = cos(r);
-			qas_sin_table[x][y] = sin(r);
-		}
+
+		double r = 2.0 * M_PI * qas_freq_table[x] / (double)qas_sample_rate;
+		qas_cos_table[x] = cos(r);
+		qas_sin_table[x] = sin(r);
 	}
 
 	for (int i = 0; i != qas_num_workers; i++) {
