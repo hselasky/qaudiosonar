@@ -33,7 +33,6 @@ static TAILQ_HEAD(,qas_wave_job) qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave
 double *qas_cos_table;
 double *qas_sin_table;
 double *qas_freq_table;
-uint8_t *qas_iso_table;
 QString *qas_descr_table;
 size_t qas_num_bands;
 
@@ -69,23 +68,10 @@ qas_wave_job_dequeue()
 	return (pjob);
 }
 
-int
+void
 qas_wave_job_free(qas_wave_job *pjob)
 {
-	int free_data;
-
-	qas_corr_lock();
-	free_data = (--(pjob->data->refcount) == 0);	
-	qas_corr_unlock();
-
-	if (free_data) {
-		qas_corr_out_free(pjob->data);
-		atomic_lock();
-		qas_out_sequence_number++;
-		atomic_unlock();
-	}
 	free(pjob);
-	return (free_data);
 }
 
 void
@@ -178,9 +164,6 @@ qas_wave_analyze_binary_search(double *indata, double *out, size_t band, size_t 
 {
 	size_t pos = 0;
 
-	qas_wave_analyze(indata, qas_cos_table[band + pos],
-	    qas_sin_table[band + pos], out + (2 * pos));
-
 	/* find maximum amplitude */
 	while (rem != 0) {
 		pos |= rem;
@@ -192,13 +175,6 @@ qas_wave_analyze_binary_search(double *indata, double *out, size_t band, size_t 
 	}
 }
 
-static void
-qas_wave_data_init(double *pdata, size_t size)
-{
-  	for (size_t x = 0; x != size; x += sizeof(double))
-		pdata[x / sizeof(double)] = -1.0;
-}
-
 static void *
 qas_wave_worker(void *arg)
 {
@@ -207,13 +183,19 @@ qas_wave_worker(void *arg)
 
 		pjob = qas_wave_job_dequeue();
 
-		qas_wave_data_init(pjob->data->data_array + pjob->data_offset,
-		    sizeof(double) * 2 * QAS_WAVE_STEP);
-
-		qas_wave_analyze_binary_search(pjob->data->data_array,
-		    pjob->data->data_array + pjob->data_offset,
-		    pjob->band_start, QAS_WAVE_STEP / 2);
-
+		switch (pjob->data->state) {
+		case QAS_STATE_1ST_SCAN:
+			qas_wave_analyze(pjob->data->data_array,
+			    qas_cos_table[pjob->band_start],
+			    qas_sin_table[pjob->band_start],
+			    pjob->data->data_array + pjob->data_offset);
+			break;
+		case QAS_STATE_2ND_SCAN:
+			qas_wave_analyze_binary_search(pjob->data->data_array,
+			    pjob->data->data_array + pjob->data_offset,
+			    pjob->band_start, QAS_WAVE_STEP / 2);
+			break;
+		}
 		qas_display_job_insert(pjob);
 	}
 	return 0;
@@ -249,7 +231,6 @@ qas_wave_init()
 	qas_cos_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_sin_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_freq_table = (double *)malloc(sizeof(double) * qas_num_bands);
-	qas_iso_table = (uint8_t *)malloc(sizeof(uint8_t) * qas_num_bands);
 	qas_descr_table = new QString [qas_num_bands];
 
 	for (size_t x = 0; x != qas_num_bands; x++) {
@@ -260,23 +241,29 @@ qas_wave_init()
 		};
 		qas_freq_table[x] = qas_base_freq *
 		    pow(2.0, (double)x / (double)(12.0 * QAS_WAVE_STEP) - num_low_octave);
-		qas_iso_table[x] = qas_find_iso(qas_freq_table[x]);
 		qas_descr_table[x] = QString(map[(x / QAS_WAVE_STEP) % 12])
 		    .arg((x + 9 * QAS_WAVE_STEP) / (12 * QAS_WAVE_STEP));
 
 		if (x % QAS_WAVE_STEP) {
 			size_t y = 0;
 			if (x & 1)
-				y |= 8;
+				y |= 128;
 			if (x & 2)
-				y |= 4;
+				y |= 64;
 			if (x & 4)
-				y |= 2;
+				y |= 32;
 			if (x & 8)
+				y |= 16;
+			if (x & 16)
+				y |= 8;
+			if (x & 32)
+				y |= 4;
+			if (x & 64)
+				y |= 2;
+			if (x & 128)
 				y |= 1;
 			qas_descr_table[x] += QString(".%1").arg(y);
 		}
-
 		double r = 2.0 * M_PI * qas_freq_table[x] / (double)qas_sample_rate;
 		qas_cos_table[x] = cos(r);
 		qas_sin_table[x] = sin(r);

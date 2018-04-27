@@ -36,8 +36,11 @@ struct qas_corr_out_data *
 qas_corr_out_alloc(size_t samples)
 {
 	struct qas_corr_out_data *pout;
+	const size_t size = sizeof(*pout) + samples * sizeof(double);
 
-	pout = (struct qas_corr_out_data *)malloc(sizeof(*pout) + samples * sizeof(double));
+	pout = (struct qas_corr_out_data *)malloc(size);
+	if (pout != 0)
+		memset(pout, 0, size);
 	return (pout);
 }
 
@@ -126,10 +129,6 @@ qas_corr_worker(void *arg)
 		pout->sequence_number = pin->sequence_number;
 		pout->refcount = qas_num_bands / QAS_WAVE_STEP;
 
-		/* reset buffer */
-		memset(pout->data_array, 0,
-		    (data_size + qas_num_bands * 2) * sizeof(double));
-		
 		/* do correlation */
 		for (size_t x = 0; x != data_size; x += QAS_CORR_SIZE) {
 			qas_x3_multiply_double(pin->data + x,

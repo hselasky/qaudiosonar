@@ -32,7 +32,9 @@ static TAILQ_HEAD(,qas_wave_job) qas_display_in_head =
     TAILQ_HEAD_INITIALIZER(qas_display_in_head);
 
 double *qas_display_data;
+double *qas_display_band;
 size_t qas_display_hist_max;
+uint8_t *qas_iso_table;
 
 void
 qas_display_job_insert(struct qas_wave_job *pjob)
@@ -81,75 +83,204 @@ qas_display_unlock()
 	pthread_mutex_unlock(&qas_display_mutex);
 }
 
+struct table {
+	double value;
+	size_t band;
+};
+
+static int
+qas_table_compare(const void *_a, const void *_b)
+{
+	struct table *a = (struct table *)_a;
+	struct table *b = (struct table *)_b;
+
+	if (a->value > b->value)
+		return (1);
+	else if (a->value < b->value)
+		return (-1);
+	else if (a->band > b->band)
+		return (1);
+	else if (a->band < b->band)
+		return (-1);
+	else
+		return (0);
+}
+
+static void
+qas_display_worker_done(double *data, double *band)
+{
+	size_t wi = qas_display_width() / 3;
+	size_t bwi = qas_display_band_width() / 3;
+	static size_t last_band = -1ULL;
+	size_t x,y,z;
+
+	memset(band, 0, sizeof(double) * 3 * bwi);
+
+	for (x = 0; x != wi; x++) {
+#if 0
+		data[3 * x + 0] = x;
+		data[3 * x + 1] = 0.0;
+		data[3 * x + 2] = x;
+#endif
+		y = (x % bwi);
+		if (data[3 * x] > band[3 * y])
+			memcpy(band + 3 * y, data + 3 * x, 3 * sizeof(double));
+	}
+
+	for (x = z = 0; x != bwi; x++) {
+		if (band[3 * x] > band[3 * z])
+			z = x;
+	}
+
+	if (band[3 * z] < 16.0)
+		return;
+
+	z = band[3 * z + 2];
+
+	int key = (z / QAS_WAVE_STEP) + 9;
+	int chan = 0;
+
+	if (z & 1)
+		chan |= 128;
+	if (z & 2)
+		chan |= 64;
+	if (z & 4)
+		chan |= 32;
+	if (z & 8)
+		chan |= 16;
+	if (z & 16)
+		chan |= 8;
+	if (z & 32)
+		chan |= 4;
+	if (z & 64)
+		chan |= 2;
+	if (z & 128)
+		chan |= 1;
+
+	/* MIDI does only have 16 channels */
+	chan &= 0x0F;
+
+	if (qas_record != 0 && z != last_band && z < qas_num_bands) {
+		QString str(qas_descr_table[z]);
+		str += QString(" /* %1Hz R=%2 */")
+		  .arg(QAS_FREQ_TABLE_ROUNDED(z))
+		  .arg((double)(z % QAS_WAVE_STEP) / (double)QAS_WAVE_STEP);
+		qas_mw->handle_append_text(str);
+
+		if (key > -1 && key < 128) {
+			qas_midi_key_send(chan, key, 90, 50);
+			qas_midi_key_send(chan, key, 0, 0);
+		}
+	}
+
+	/* store last band */
+	last_band = z;
+}
+
 static void *
 qas_display_worker(void *arg)
 {
+	size_t table_size = qas_num_bands / QAS_WAVE_STEP;
+	struct table table[table_size];
+
 	while (1) {
 		struct qas_wave_job *pjob;
+		struct qas_corr_out_data *pcorr;
 		double *data;
-		int band_max;
+		double *band;
+		size_t data_size;
+		size_t sequence;
 
 		pjob = qas_display_job_dequeue();
-		data = qas_display_get_line(pjob->data->sequence_number);
+
+		/* get parent structure */
+		pcorr = pjob->data;
+		/* get relevant data line */
+		data = qas_display_get_line(pcorr->sequence_number);
+		/* get relevant band */
+		band = qas_display_get_band(pcorr->sequence_number);
+
+		/* get data_size */
+		data_size = pjob->data_offset - (pjob->band_start * 2);
 
 		atomic_graph_lock();
-		memcpy(data + (pjob->band_start * 2),
-		    pjob->data->data_array + pjob->data_offset,
-		    sizeof(double) * 2 * QAS_WAVE_STEP);
-		band_max = qas_mw->band_max;
+		switch (pcorr->state) {
+			size_t off;
+			size_t x,z;
+
+		case QAS_STATE_1ST_SCAN:
+			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
+			for (x = 0; x != QAS_WAVE_STEP_LOG2; x++) {
+				double *p_value = pcorr->data_array  + pjob->data_offset;
+				/* collect a data point */
+				data[off + (3 * x) + 0] = p_value[0];
+				data[off + (3 * x) + 1] = p_value[1];
+				data[off + (3 * x) + 2] = pjob->band_start;
+			}
+			break;
+
+		case QAS_STATE_2ND_SCAN:
+			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
+			for (x = z = 0; x != QAS_WAVE_STEP; x++) {
+				double *p_value = pcorr->data_array  + pjob->data_offset + 2 * x;
+				if (*p_value > 0.0 && z < QAS_WAVE_STEP_LOG2) {
+					/* collect a data point */
+					data[off + (3 * z) + 0] = p_value[0];
+					data[off + (3 * z) + 1] = p_value[1];
+					data[off + (3 * z) + 2] = pjob->band_start + x;
+					z++;
+				}
+			}
+
+			/* fill out remainder, if any */
+			if (z == 0) {
+				data[off + 0] = 0;
+				data[off + 1] = 0;
+				data[off + 2] = pjob->band_start;
+				z++;
+			}
+			for (; z != QAS_WAVE_STEP_LOG2; z++) {
+				/* collect a data point */
+				memcpy(data + off + (3 * z),
+				       data + off + (3 * z) - 3,
+				       3 * sizeof(double));
+			}
+			break;
+		}
 		atomic_graph_unlock();
 
-		if (qas_wave_job_free(pjob)) {
-		  	enum { MAX = (QAS_WAVE_STEP * 12) };
-			size_t wi = qas_display_width() / 2;
-			double temp[MAX];
-			size_t x, z;
-			static size_t last_z = -1ULL;
+		/* free current job */
+		qas_wave_job_free(pjob);
 
-			for (x = 0; x != MAX; x++)
-				temp[x] = 1.0;
-
-			for (x = 0; x != wi; x++) {
-				for (z = 0; z != ((x > MAX) ? MAX : (x + 1)); z++) {
-					double value = data[2 * (x - z)];
-					if (value < 1.0)
-						continue;
-					value = pow(value, 3.0);
-					if (value > temp[x % MAX])
-						temp[x % MAX] = value;
-					break;
+		if (--(pcorr->refcount) == 0) {
+			switch (pcorr->state) {
+			case QAS_STATE_1ST_SCAN:
+				for (size_t x = 0; x != table_size; x++) {
+					table[x].value = pcorr->data_array[data_size + 2 * x * QAS_WAVE_STEP];
+					table[x].band = x * QAS_WAVE_STEP;
 				}
-			}
-			for (z = x = 0; x != MAX; x++) {
-				temp[x] = temp[x];
-				if (temp[x] > temp[z])
-					z = x;
-			}
-			if (temp[z] != 1.0 && z != last_z) {
-				int band = z + (band_max - (band_max % MAX));
-				int key = (band / QAS_WAVE_STEP) + 9;
-				uint8_t chan = 0;
+				mergesort(table, table_size, sizeof(table[0]), &qas_table_compare);
+				pcorr->state = QAS_STATE_2ND_SCAN;
+				pcorr->refcount = (table_size / 4);
 
-				if (z & 1)
-					chan |= 8;
-				if (z & 2)
-					chan |= 4;
-				if (z & 4)
-					chan |= 2;
-				if (z & 8)
-					chan |= 1;
-
-				if (qas_record != 0 && band > -1 && (size_t)band < qas_num_bands) {
-					QString str(qas_descr_table[band]);
-					str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
-					qas_mw->handle_append_text(str);
-
-					if (key > -1 && key < 128) {
-						qas_midi_key_send(chan, key, 90, 50);
-						qas_midi_key_send(chan, key, 0, 0);
-					}
+				/* generate jobs for output data */
+				for (size_t x = table_size - (table_size / 4); x != table_size; x++) {
+					pjob = qas_wave_job_alloc();
+					pjob->data_offset = data_size + (2 * table[x].band);
+					pjob->band_start = table[x].band;
+					pjob->data = pcorr;
+					qas_wave_job_insert(pjob);
 				}
-				last_z = z;
+				break;
+			case QAS_STATE_2ND_SCAN:
+				qas_display_worker_done(data, band);
+
+				qas_corr_out_free(pcorr);
+
+				atomic_lock();
+				qas_out_sequence_number++;
+				atomic_unlock();
+				break;
 			}
 		}
 	}
@@ -159,13 +290,25 @@ qas_display_worker(void *arg)
 double *
 qas_display_get_line(size_t which)
 {
-	return (qas_display_data + (qas_num_bands * 2 * (which % qas_display_hist_max)));
+	return (qas_display_data + qas_display_width() * (which % qas_display_hist_max));
 }
 
 size_t
 qas_display_width()
 {
-	return (qas_num_bands * 2);
+	return (((QAS_WAVE_STEP_LOG2 * qas_num_bands) / QAS_WAVE_STEP) * 3);
+}
+
+double *
+qas_display_get_band(size_t which)
+{
+	return (qas_display_band + qas_display_band_width() * (which % qas_display_hist_max));
+}
+
+size_t
+qas_display_band_width()
+{
+	return (12 * QAS_WAVE_STEP_LOG2 * 3);
 }
 
 size_t
@@ -192,13 +335,25 @@ qas_display_init()
 {
 	pthread_mutex_init(&qas_display_mutex, 0);
 	pthread_cond_init(&qas_display_cond, 0);
+	size_t size;
 
 	qas_display_hist_max = 256;
-	size_t size = 2 * sizeof(double) * qas_num_bands * qas_display_hist_max;
-	qas_display_data = (double *)malloc(size);
 
-	for (size_t x = 0; x != size; x += sizeof(double))
-		qas_display_data[x / sizeof(double)] = -1.0;
+	size = sizeof(double) * qas_display_width() * qas_display_hist_max;
+	qas_display_data = (double *)malloc(size);
+	memset(qas_display_data, 0, size);
+
+	size = qas_display_width() / 3;
+	qas_iso_table = (uint8_t *)malloc(size);
+
+	for (size_t x = 0; x != size; x++) {
+		qas_iso_table[x] = qas_find_iso(qas_freq_table[
+		    (x / QAS_WAVE_STEP_LOG2) * QAS_WAVE_STEP]);
+	}
+
+	size = sizeof(double) * qas_display_band_width() * qas_display_hist_max;
+	qas_display_band = (double *)malloc(size);
+	memset(qas_display_band, 0, size);
 
 	pthread_t qas_display_thread;
 	pthread_create(&qas_display_thread, 0, &qas_display_worker, 0);

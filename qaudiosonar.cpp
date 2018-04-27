@@ -328,7 +328,7 @@ QasBand :: QasBand(QasMainWindow *_mw)
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
 
-	setMinimumSize(MAX, 2 * MAX);
+	setMinimumSize(192, 1);
 	setMouseTracking(1);
 	watchdog->start(500);
 }
@@ -339,7 +339,7 @@ QasGraph :: QasGraph(QasMainWindow *_mw)
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
 
-	setMinimumSize(3 * QAS_WAVE_STEP * 12, 2 * QAS_WAVE_STEP * 12);
+	setMinimumSize(256, 256);
 	setMouseTracking(1);
 	watchdog->start(500);
 }
@@ -350,14 +350,13 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
-	  	int offset = mw->sb_band->value();
-		int band = (MAX * event->x()) / width() +
-		    (mw->band_max - (mw->band_max % MAX)) - offset;
-		if (band > -1 && (size_t)band < qas_num_bands) {
-			QString str(qas_descr_table[band]);
-			str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
-			mw->edit->appendPlainText(str);
-		}
+		double *band = qas_display_get_band((event->y() * qas_display_height()) / height());
+		size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
+		size_t real_band = band[3 * x_off + 2];
+
+		QString str(qas_descr_table[real_band]);
+		str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(real_band));
+		mw->edit->appendPlainText(str);
 	}
 }
 
@@ -365,14 +364,13 @@ void
 QasBand :: mouseMoveEvent(QMouseEvent *event)
 {
 	QString str;
-	int offset = mw->sb_band->value();
-	int band = (MAX * event->x()) / width() +
-	    (mw->band_max - (mw->band_max % MAX)) - offset;
+	double *band = qas_display_get_band((event->y() * qas_display_height()) / height());
+	size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
+	size_t real_band = band[3 * x_off + 2];
 
-	if (band > -1 && (size_t)band < qas_num_bands) {
-		str = qas_descr_table[band];
-		str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(band));
-	}
+	str = qas_descr_table[real_band];
+	str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(real_band));
+
 	if (toolTip() != str)
 		setToolTip(str);
 }
@@ -384,18 +382,15 @@ QasBand :: paintEvent(QPaintEvent *event)
 	int h = height();
 	size_t hd = qas_display_height();
 	size_t hi = hd / 2 + 1;
-	size_t wi = qas_display_width() / 2;
-	int offset = mw->sb_band->value();
+	size_t real_band = 0;
 
 	if (w == 0 || h == 0)
 		return;
 
-	offset = (MAX + (offset % MAX)) % MAX;
-
 	QPainter paint(this);
 	QColor white(255,255,255);
 
-	QImage accu(MAX, hi, QImage::Format_ARGB32);
+	QImage accu(BAND_MAX, hi, QImage::Format_ARGB32);
 
 	accu.fill(white);
 
@@ -405,48 +400,32 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	atomic_graph_lock();
 	for (size_t y = 0; y != hi; y++) {
-		double *data = qas_display_get_line(y + seq);
+		double *band = qas_display_get_band(y + seq);
+		double simp[12] = {};
 		double max;
 		size_t x, z;
 
-		double temp[MAX];
-		double simp[12] = {};
-
-		for (x = 0; x != MAX; x++)
-			temp[x] = 1.0;
-
-		for (x = 0; x != wi; x++) {
-			for (z = 0; z != ((x > MAX) ? MAX : (x + 1)); z++) {
-				double value = data[2 * (x - z)];
-				if (value < 1.0)
-					continue;
-				value = pow(value, 3.0);
-				if (value > temp[(x + offset) % MAX])
-					temp[(x + offset) % MAX] = value;
-				break;
-			}
-		}
-		for (z = x = 0; x != MAX; x++) {
-			if (temp[x] > simp[x / 16])
-				simp[x / 16] = temp[x];
-			temp[x] = temp[x];
-			if (temp[x] > temp[z])
+		for (z = x = 0; x != BAND_MAX; x++) {
+			if (band[3 * x] > simp[x / QAS_WAVE_STEP_LOG2])
+				simp[x / QAS_WAVE_STEP_LOG2] = band[3 * x];
+			if (band[3 * x] > band[3 * z])
 				z = x;
 		}
 
-		max = temp[z];
+		max = band[3 * z];
 		if (max < 16.0)
 			max = 16.0;
+		real_band = band[3 * z + 2];
 
-		for (size_t x = 0; x != MAX; x++) {
-			double value = temp[x];
-			int level = (value / max) * 255.0;
+		for (size_t x = 0; x != BAND_MAX; x++) {
+			double value = band[3 * x];
+			int level = pow(value / max, 3) * 255.0;
 			if (level > 255)
 				level = 255;
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (simp[x / 16] / max) * 255.0;
+			int other = level + (simp[x / QAS_WAVE_STEP_LOG2] / max) * 255.0;
 			if (other > 255)
 				other = 255;
 			else if (other < 0)
@@ -460,6 +439,13 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_graph_unlock();
 
 	paint.drawImage(QRect(0,0,w,h),accu);
+
+	QString str(qas_descr_table[real_band]);
+	str += QString(" - %1Hz\nR=%2")
+	  .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
+	  .arg((int)(1000.0 * ((double)(real_band % QAS_WAVE_STEP)) /
+		     (double)QAS_WAVE_STEP) / 1000.0);
+	mw->lbl_max->setText(str);
 }
 
 void
@@ -497,7 +483,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	QPainter paint(this);
 	int w = width();
 	int h = height();
-	size_t wi = qas_display_width() / 2;
+	size_t wi = qas_display_width() / 3;
 	size_t hd = qas_display_height();
 	size_t hi = hd / 2 + 1;
 	size_t hg = h / 6 + 1;
@@ -515,7 +501,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	size_t seq = qas_out_sequence_number + hd - hi;
 	atomic_unlock();
 
-	QImage hist(w, hi, QImage::Format_ARGB32);
+	QImage hist(wi, hi, QImage::Format_ARGB32);
 	QImage power(wi, hg, QImage::Format_ARGB32);
 	QImage iso(wi, hg, QImage::Format_ARGB32);
 	QImage phase(wi, hg, QImage::Format_ARGB32);
@@ -579,44 +565,37 @@ QasGraph :: paintEvent(QPaintEvent *event)
 				corr.setPixelColor(x, value, corr_c);
 		}
 	} while (0);
+
 	for (size_t y = 0; y != hi; y++) {
 		double *data = qas_display_get_line(y + seq);
 		double max;
 		size_t x, z, t;
 
 		for (z = x = 0; x != wi; x++) {
-			if (data[2*x] > data[2*z])
+			if (data[3 * x] > data[3 * z])
 				z = x;
 		}
-		max = data[2 * z];
+		max = data[3 * z];
 		if (max < 1.0)
 			max = 1.0;
 
 		if (y == hi - 1) {
 			double iso_amp[QAS_STANDARD_AUDIO_BANDS];
 
-			if (z != mw->band_max) {
-				mw->band_max = z;
-
-				QString str(qas_descr_table[z]);
-				str += QString(" - %1Hz").arg((int)qas_freq_table[z]);
-				mw->lbl_max->setText(str);
-			}
-
 			for (x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++)
 				iso_amp[x] = 1.0;
 
 			for (x = 0; x != wi; x++) {
 				t = qas_iso_table[x];
-				if (iso_amp[t] < data[2*x])
-					iso_amp[t] = data[2*x];
+				if (iso_amp[t] < data[3 * x])
+					iso_amp[t] = data[3 * x];
 			}
 
 			for (z = x = 0; x != wi; x++) {
-				if (data[2 * x] < 1.0)
+				if (data[3 * x] < 1.0)
 					continue;
-				double power_new = data[2 * x];
-				double phase_new = data[2 * x + 1];
+				double power_new = data[3 * x];
+				double phase_new = data[3 * x + 1];
 
 				for (t = z; t != (x + 1); t++) {
 					int power_y = (double)(power_new / max) * (hg - 1);
@@ -647,18 +626,17 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			}
 		}
 		for (size_t x = 0; x != wi; x++) {
-			double value = data[2 * x];
+			double value = data[3 * x];
 			if (value < 1.0)
 				continue;
-			int level = value / max * 255.0;
+			int level = pow(value / max, 3.0) * 255.0;
 			if (level > 255)
 				level = 255;
 			else if (level < 0)
 				level = 0;
 			QColor hc(255 - level, 255 - level, 255 - level, 255);
-			size_t xo = (x * w) / wi;
-			if (hist.pixelColor(xo, hi - 1 - y).red() > hc.red())
-				hist.setPixelColor(xo, hi - 1 - y, hc);
+			if (hist.pixelColor(x, hi - 1 - y).red() > hc.red())
+				hist.setPixelColor(x, hi - 1 - y, hc);
 		}
 	}
 	atomic_graph_unlock();
@@ -770,7 +748,6 @@ QasMainWindow :: QasMainWindow()
 
 	lbl_max = new QLabel();
 	lbl_max->setAlignment(Qt::AlignCenter);
-	band_max = 0;
 
 	QFont fnt(lbl_max->font());
 	fnt.setPixelSize(16);
@@ -780,11 +757,6 @@ QasMainWindow :: QasMainWindow()
 	sb_zoom->setRange(0, qas_window_size - 1);
 	sb_zoom->setSingleStep(1);
 	sb_zoom->setValue(0);
-
-	sb_band = new QScrollBar(Qt::Horizontal);
-	sb_band->setRange(-QAS_WAVE_STEP + 1, QAS_WAVE_STEP - 1);
-	sb_band->setSingleStep(1);
-	sb_band->setValue(-QAS_WAVE_STEP / 2);
 
 	gl->addWidget(new QLabel(tr("DSP RX:")), 0,0,1,1);
 
@@ -835,7 +807,6 @@ QasMainWindow :: QasMainWindow()
 	gl->addWidget(qg, 4,0,2,8);
 	gl->setRowStretch(2,1);
 
-	glb->addWidget(sb_band, 0,0,1,1);
 	glb->addWidget(lbl_max, 1,0,1,1);
 	glb->addWidget(qb, 2,0,1,1);
 	glb->addWidget(edit, 3,0,1,1);

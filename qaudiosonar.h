@@ -64,6 +64,8 @@
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_WAVE_STEP (1U << QAS_WAVE_STEP_LOG2)
+#define	QAS_WAVE_STEP_LOG2 8
 
 #define	QAS_FREQ_TABLE_ROUNDED(band) \
     ((double)(((int64_t)(1000.0 * qas_freq_table[band])) / 1000.0))
@@ -167,7 +169,7 @@ public slots:
 class QasBand : public QWidget {
 	Q_OBJECT
 public:
-	enum { MAX = 192 };
+	enum { BAND_MAX = 12 * QAS_WAVE_STEP_LOG2 };
 	QasBand(QasMainWindow *);
 	~QasBand() { };
 	QasMainWindow *mw;
@@ -203,14 +205,11 @@ public:
 	QasMainWindow();
 	~QasMainWindow() { };
 
-	size_t band_max;
-
 	QasConfig *qc;
 	QasView *qv;
 	QGridLayout *gl;
 	QGridLayout *glb;
 	QScrollBar *sb_zoom;
-	QScrollBar *sb_band;	
 	QLabel *lbl_max;
 	QWidget *qbw;
 	QasBand *qb;
@@ -262,8 +261,6 @@ void qas_x3_multiply_double(double *, double *, double *, const size_t);
 
 /* ============== WAVE SUPPORT ============== */
 
-#define	QAS_WAVE_STEP 16
-
 extern double *qas_cos_table;
 extern double *qas_sin_table;
 extern double *qas_freq_table;
@@ -281,7 +278,7 @@ struct qas_wave_job {
 extern struct qas_wave_job *qas_wave_job_alloc();
 extern void qas_wave_job_insert(struct qas_wave_job *);
 extern struct qas_wave_job *qas_wave_job_dequeue();
-extern int qas_wave_job_free(qas_wave_job *);
+extern void qas_wave_job_free(qas_wave_job *);
 extern void qas_wave_signal();
 extern void qas_wave_wait();
 extern void qas_wave_lock();
@@ -302,6 +299,9 @@ struct qas_corr_out_data {
 	TAILQ_ENTRY(qas_corr_in_data) entry;
 	size_t sequence_number;
 	size_t refcount;
+	size_t state;
+#define	QAS_STATE_1ST_SCAN 0
+#define	QAS_STATE_2ND_SCAN 1
 	double data_array[];
 };
 
@@ -321,6 +321,7 @@ extern void qas_corr_init();
 /* ============== DISPLAY SUPPORT ============== */
 
 extern double *qas_display_data;
+extern double *qas_display_band;
 extern size_t qas_display_hist_max;	/* power of two */
 
 extern void qas_display_job_insert(struct qas_wave_job *);
@@ -332,6 +333,8 @@ extern void qas_display_unlock();
 extern void qas_display_init();
 extern double *qas_display_get_line(size_t);
 extern size_t qas_display_width();
+extern double *qas_display_get_band(size_t);
+extern size_t qas_display_band_width();
 extern size_t qas_display_height();
 extern size_t qas_display_lag();
 
