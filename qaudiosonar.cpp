@@ -413,12 +413,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 		}
 
 		max = band[3 * z];
-		if (max < 16.0)
-			max = 16.0;
+		if (max < 1.0)
+			max = 1.0;
 		real_band = band[3 * z + 2];
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
 			double value = band[3 * x];
+			if (value != max)
+				value /= 2.0;
 			int level = pow(value / max, 3) * 255.0;
 			if (level > 255)
 				level = 255;

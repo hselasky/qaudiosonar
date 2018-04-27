@@ -240,7 +240,7 @@ qas_wave_init()
 			"F%1", "G%1B", "G%1", "A%1B"
 		};
 		qas_freq_table[x] = qas_base_freq *
-		    pow(2.0, (double)x / (double)(12.0 * QAS_WAVE_STEP) - num_low_octave);
+		    pow(2.0, (double)x / (double)(12 * QAS_WAVE_STEP) - num_low_octave);
 		qas_descr_table[x] = QString(map[(x / QAS_WAVE_STEP) % 12])
 		    .arg((x + 9 * QAS_WAVE_STEP) / (12 * QAS_WAVE_STEP));
 

@@ -117,11 +117,6 @@ qas_display_worker_done(double *data, double *band)
 	memset(band, 0, sizeof(double) * 3 * bwi);
 
 	for (x = 0; x != wi; x++) {
-#if 0
-		data[3 * x + 0] = x;
-		data[3 * x + 1] = 0.0;
-		data[3 * x + 2] = x;
-#endif
 		y = (x % bwi);
 		if (data[3 * x] > band[3 * y])
 			memcpy(band + 3 * y, data + 3 * x, 3 * sizeof(double));
@@ -222,8 +217,8 @@ qas_display_worker(void *arg)
 		case QAS_STATE_2ND_SCAN:
 			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
 			for (x = z = 0; x != QAS_WAVE_STEP; x++) {
-				double *p_value = pcorr->data_array  + pjob->data_offset + 2 * x;
-				if (*p_value > 0.0 && z < QAS_WAVE_STEP_LOG2) {
+				double *p_value = pcorr->data_array + pjob->data_offset + 2 * x;
+				if ((x == 0 || p_value[0] > 0.0) && z < QAS_WAVE_STEP_LOG2) {
 					/* collect a data point */
 					data[off + (3 * z) + 0] = p_value[0];
 					data[off + (3 * z) + 1] = p_value[1];
@@ -261,17 +256,20 @@ qas_display_worker(void *arg)
 				}
 				mergesort(table, table_size, sizeof(table[0]), &qas_table_compare);
 				pcorr->state = QAS_STATE_2ND_SCAN;
-				pcorr->refcount = (table_size / 4);
 
 				/* generate jobs for output data */
 				for (size_t x = table_size - (table_size / 4); x != table_size; x++) {
+					if (table[x].value < 1.0)
+						continue;
+					pcorr->refcount++;
 					pjob = qas_wave_job_alloc();
 					pjob->data_offset = data_size + (2 * table[x].band);
 					pjob->band_start = table[x].band;
 					pjob->data = pcorr;
 					qas_wave_job_insert(pjob);
 				}
-				break;
+				if (pcorr->refcount != 0)
+					break;
 			case QAS_STATE_2ND_SCAN:
 				qas_display_worker_done(data, band);
 
