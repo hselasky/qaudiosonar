@@ -141,7 +141,7 @@ qas_display_worker(void *arg)
 
 				if (qas_record != 0 && band > -1 && (size_t)band < qas_num_bands) {
 					QString str(qas_descr_table[band]);
-					str += QString(" /* %1Hz */").arg((int)qas_freq_table[band]);
+					str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
 					qas_mw->handle_append_text(str);
 
 					if (key > -1 && key < 128) {

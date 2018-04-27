@@ -355,7 +355,7 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 		    (mw->band_max - (mw->band_max % MAX)) - offset;
 		if (band > -1 && (size_t)band < qas_num_bands) {
 			QString str(qas_descr_table[band]);
-			str += QString(" /* %1Hz */").arg((int)qas_freq_table[band]);
+			str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
 			mw->edit->appendPlainText(str);
 		}
 	}
@@ -371,7 +371,7 @@ QasBand :: mouseMoveEvent(QMouseEvent *event)
 
 	if (band > -1 && (size_t)band < qas_num_bands) {
 		str = qas_descr_table[band];
-		str += QString(" - %1Hz").arg((int)qas_freq_table[band]);
+		str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(band));
 	}
 	if (toolTip() != str)
 		setToolTip(str);
@@ -471,7 +471,7 @@ QasGraph :: mousePressEvent(QMouseEvent *event)
 		int band = (qas_num_bands * event->x()) / width();
 		if (band > -1 && (size_t)band < qas_num_bands) {
 			QString str(qas_descr_table[band]);
-			str += QString(" /* %1Hz */").arg((int)qas_freq_table[band]);
+			str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
 			mw->edit->appendPlainText(str);
 		}
 	}
@@ -485,7 +485,7 @@ QasGraph :: mouseMoveEvent(QMouseEvent *event)
 
 	if (band > -1 && (size_t)band < qas_num_bands) {
 		str = qas_descr_table[band];
-		str += QString(" - %1Hz").arg((int)qas_freq_table[band]);
+		str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(band));
 	}
 	if (toolTip() != str)
 		setToolTip(str);

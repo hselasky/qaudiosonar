@@ -65,6 +65,9 @@
 #define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
 
+#define	QAS_FREQ_TABLE_ROUNDED(band) \
+    ((double)(((int64_t)(1000.0 * qas_freq_table[band])) / 1000.0))
+
 #if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0)
 #error "Invalid parameters"
 #endif
