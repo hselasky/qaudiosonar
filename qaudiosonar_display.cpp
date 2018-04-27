@@ -202,43 +202,42 @@ qas_display_worker(void *arg)
 		switch (pcorr->state) {
 			size_t off;
 			size_t x,z;
+			double *p_value;
 
 		case QAS_STATE_1ST_SCAN:
 			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
-			for (x = 0; x != QAS_WAVE_STEP_LOG2; x++) {
-				double *p_value = pcorr->data_array + pjob->data_offset;
+			p_value = pcorr->data_array + pjob->data_offset;
+
+			/* collect a data point */
+			data[off + 0] = p_value[0];
+			data[off + 1] = p_value[1];
+			data[off + 2] = pjob->band_start;
+
+			for (x = 1; x != QAS_WAVE_STEP_LOG2; x++) {
 				/* collect a data point */
-				data[off + (3 * x) + 0] = p_value[0];
-				data[off + (3 * x) + 1] = p_value[1];
-				data[off + (3 * x) + 2] = pjob->band_start;
+				data[off + (3 * x) + 0] = 0;
+				data[off + (3 * x) + 1] = 0;
+				data[off + (3 * x) + 2] = 0;
 			}
 			break;
 
 		case QAS_STATE_2ND_SCAN:
 			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
-			for (x = z = 0; x != QAS_WAVE_STEP; x++) {
-				double *p_value = pcorr->data_array + pjob->data_offset + 2 * x;
-				if ((x == 0 || p_value[0] > 0.0) && z < QAS_WAVE_STEP_LOG2) {
+			for (x = 0; x != QAS_WAVE_STEP; x++) {
+				p_value = pcorr->data_array + pjob->data_offset + 2 * x;
+				if (p_value[0] > 0.0) {
+					/* clear data point */
+					data[off + 0] = 0;
+					data[off + 1] = 0;
+					data[off + 2] = 0;
+
+					z = (QAS_WAVE_STEP_LOG2 * x) / QAS_WAVE_STEP;
 					/* collect a data point */
 					data[off + (3 * z) + 0] = p_value[0];
 					data[off + (3 * z) + 1] = p_value[1];
 					data[off + (3 * z) + 2] = pjob->band_start + x;
-					z++;
+					break;
 				}
-			}
-
-			/* fill out remainder, if any */
-			if (z == 0) {
-				data[off + 0] = 0;
-				data[off + 1] = 0;
-				data[off + 2] = pjob->band_start;
-				z++;
-			}
-			for (; z != QAS_WAVE_STEP_LOG2; z++) {
-				/* collect a data point */
-				memcpy(data + off + (3 * z),
-				       data + off + (3 * z) - 3,
-				       3 * sizeof(double));
 			}
 			break;
 		}

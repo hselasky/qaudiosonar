@@ -173,6 +173,14 @@ qas_wave_analyze_binary_search(double *indata, double *out, size_t band, size_t 
 			pos &= ~rem;
 		rem /= 2;
 	}
+
+	/* keep maximum */
+	double temp[2] = { out[2 * pos + 0], out[2 * pos + 1] };
+	memset(out, 0, 2 * sizeof(double) * QAS_WAVE_STEP);
+
+	/* restore value */
+	out[2*pos + 0] = temp[0];
+	out[2*pos + 1] = temp[1];
 }
 
 static void *
