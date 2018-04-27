@@ -126,7 +126,7 @@ qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
 
 	out[0] = sqrt(cos_in * cos_in + sin_in * sin_in);
 	if (out[0] < 1.0) {
-		out[0] = 0.0;
+		out[0] = 1.0;
 		out[1] = 0.0;
 	} else {
 		uint8_t pol = ((cos_in < 0) ? 2 : 0) | ((sin_in < 0) ? 1 : 0);

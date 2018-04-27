@@ -413,8 +413,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 		}
 
 		max = band[3 * z];
-		if (max < 1.0)
-			max = 1.0;
+		if (max < 2.0)
+			max = 2.0;
 		real_band = band[3 * z + 2];
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
@@ -578,8 +578,8 @@ QasGraph :: paintEvent(QPaintEvent *event)
 				z = x;
 		}
 		max = data[3 * z];
-		if (max < 1.0)
-			max = 1.0;
+		if (max < 2.0)
+			max = 2.0;
 
 		if (y == hi - 1) {
 			double iso_amp[QAS_STANDARD_AUDIO_BANDS];

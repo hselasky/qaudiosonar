@@ -206,7 +206,7 @@ qas_display_worker(void *arg)
 		case QAS_STATE_1ST_SCAN:
 			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
 			for (x = 0; x != QAS_WAVE_STEP_LOG2; x++) {
-				double *p_value = pcorr->data_array  + pjob->data_offset;
+				double *p_value = pcorr->data_array + pjob->data_offset;
 				/* collect a data point */
 				data[off + (3 * x) + 0] = p_value[0];
 				data[off + (3 * x) + 1] = p_value[1];
@@ -259,7 +259,7 @@ qas_display_worker(void *arg)
 
 				/* generate jobs for output data */
 				for (size_t x = table_size - (table_size / 4); x != table_size; x++) {
-					if (table[x].value < 1.0)
+					if (table[x].value < 16.0)
 						continue;
 					pcorr->refcount++;
 					pjob = qas_wave_job_alloc();
