@@ -184,7 +184,6 @@ qas_display_worker(void *arg)
 		double *data;
 		double *band;
 		size_t data_size;
-		size_t sequence;
 
 		pjob = qas_display_job_dequeue();
 
