@@ -81,6 +81,21 @@ atomic_wakeup(void)
 	pthread_cond_broadcast(&atomic_cv);
 }
 
+static size_t
+QasGetSequenceNumber(size_t *phi)
+{
+	size_t hd = qas_display_height();
+	size_t hi = hd / 2 + 1;
+
+	*phi = hi;
+
+	atomic_lock();
+	size_t seq = qas_out_sequence_number + hd - hi;
+	atomic_unlock();
+
+	return (seq);
+}
+
 QasBandPassBox :: QasBandPassBox()
 {
 	setTitle("Band pass center frequency: 1 Hz");
@@ -350,10 +365,27 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
-		double *band = qas_display_get_band((event->y() * qas_display_height()) / height());
-		size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
-		size_t real_band = band[3 * x_off + 2];
+		size_t hi;
+		size_t seq;
+		int h = height();
 
+		seq = QasGetSequenceNumber(&hi);
+
+		double *band = qas_display_get_band(((h - event->y()) * hi) / h + seq);
+		size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
+
+		while (x_off != BAND_MAX) {
+			if (band[3 * x_off] != 0.0)
+				break;
+			x_off++;
+		}
+		while (x_off != 0) {
+			if (band[3 * x_off] != 0.0)
+				break;
+			x_off--;
+		}
+
+		size_t real_band = band[3 * x_off + 2];
 		QString str(qas_descr_table[real_band]);
 		str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(real_band));
 		mw->edit->appendPlainText(str);
@@ -363,9 +395,26 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 void
 QasBand :: mouseMoveEvent(QMouseEvent *event)
 {
+	size_t hi;
+	size_t seq;
+	int h = height();
+
+	seq = QasGetSequenceNumber(&hi);
+
 	QString str;
-	double *band = qas_display_get_band((event->y() * qas_display_height()) / height());
+	double *band = qas_display_get_band(((h - event->y()) * hi) / h + seq);
 	size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
+
+	while (x_off != BAND_MAX) {
+		if (band[3 * x_off] != 0.0)
+			break;
+		x_off++;
+	}
+	while (x_off != 0) {
+		if (band[3 * x_off] != 0.0)
+			break;
+		x_off--;
+	}
 	size_t real_band = band[3 * x_off + 2];
 
 	str = qas_descr_table[real_band];
@@ -380,12 +429,13 @@ QasBand :: paintEvent(QPaintEvent *event)
 {
 	int w = width();
 	int h = height();
-	size_t hd = qas_display_height();
-	size_t hi = hd / 2 + 1;
+	size_t hi;
 	size_t real_band = 0;
 
 	if (w == 0 || h == 0)
 		return;
+
+	size_t seq = QasGetSequenceNumber(&hi);
 
 	QPainter paint(this);
 	QColor white(255,255,255);
@@ -393,10 +443,6 @@ QasBand :: paintEvent(QPaintEvent *event)
 	QImage accu(BAND_MAX, hi, QImage::Format_ARGB32);
 
 	accu.fill(white);
-
-	atomic_lock();
-	size_t seq = qas_out_sequence_number + hd - hi;
-	atomic_unlock();
 
 	atomic_graph_lock();
 	for (size_t y = 0; y != hi; y++) {
@@ -486,8 +532,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	int w = width();
 	int h = height();
 	size_t wi = qas_display_width() / 3;
-	size_t hd = qas_display_height();
-	size_t hi = hd / 2 + 1;
+	size_t hi;
 	size_t hg = h / 6 + 1;
 	size_t rg = h / 4 + 1;
 	size_t wc = qas_window_size;
@@ -499,9 +544,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	if (w == 0 || h == 0)
 		return;
 
-	atomic_lock();
-	size_t seq = qas_out_sequence_number + hd - hi;
-	atomic_unlock();
+	size_t seq = QasGetSequenceNumber(&hi);
 
 	QImage hist(wi, hi, QImage::Format_ARGB32);
 	QImage power(wi, hg, QImage::Format_ARGB32);
