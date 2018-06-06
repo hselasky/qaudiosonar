@@ -36,7 +36,6 @@ size_t qas_window_size;
 size_t qas_in_sequence_number;
 size_t qas_out_sequence_number;
 QasMainWindow *qas_mw;
-double qas_tuning[2] = {1.0, 0.0};
 
 static void
 atomic_init(void)
@@ -928,10 +927,15 @@ QasMainWindow :: handle_view()
 void
 QasMainWindow :: handle_tuning()
 {
-	double value = 2.0 * M_PI * pow(2.0, (double)tuning->value() / 12000.0);
+	double value = pow(2.0, (double)tuning->value() / 12000.0);
 
-	qas_tuning[0] = cos(value);
-	qas_tuning[1] = sin(value);
+  	for (size_t x = 0; x != qas_num_bands; x++) {
+		qas_freq_table[x] = qas_base_freq * value *
+		    pow(2.0, (double)x / (double)(12 * QAS_WAVE_STEP) - qas_low_octave);
+		double r = 2.0 * M_PI * qas_freq_table[x] / (double)qas_sample_rate;
+		qas_cos_table[x] = cos(r);
+		qas_sin_table[x] = sin(r);
+	}
 }
 
 void

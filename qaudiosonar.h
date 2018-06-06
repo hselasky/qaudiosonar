@@ -249,7 +249,8 @@ extern int qas_freeze;
 extern int qas_record;
 extern double qas_view_decay;
 extern QasMainWindow *qas_mw;
-extern double qas_tuning[2];
+extern double qas_low_octave;
+extern const double qas_base_freq;
 
 void atomic_lock();
 void atomic_unlock();

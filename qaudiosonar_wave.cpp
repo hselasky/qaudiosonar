@@ -35,6 +35,7 @@ double *qas_sin_table;
 double *qas_freq_table;
 QString *qas_descr_table;
 size_t qas_num_bands;
+double qas_low_octave;
 
 struct qas_wave_job *
 qas_wave_job_alloc()
@@ -109,12 +110,6 @@ qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
 	double n_sin;
 
 	indata += qas_window_size + QAS_CORR_SIZE;
-
-	/* adjust according to tuning */
-	n_cos = qas_tuning[0] * k_cos - qas_tuning[1] * k_sin;
-	n_sin = qas_tuning[0] * k_sin + qas_tuning[1] * k_cos;
-	k_cos = n_cos;
-	k_sin = n_sin;
 
 	for (size_t x = 0; x != qas_window_size; x++, indata--) {
 		cos_in += t_cos * indata[0];
@@ -215,7 +210,7 @@ qas_wave_worker(void *arg)
 	return 0;
 }
 
-static const double qas_base_freq = 440.0;	/* A-key in Hz */
+const double qas_base_freq = 440.0;	/* A-key in Hz */
 
 void
 qas_wave_init()
@@ -239,7 +234,8 @@ qas_wave_init()
 
 	if (num_high_octave < 1 || num_low_octave < 1)
 		errx(EX_USAGE, "Invalid number of octaves\n");
-	
+
+	qas_low_octave = num_low_octave;
 	qas_num_bands = (size_t)(num_high_octave + num_low_octave) * 12 * QAS_WAVE_STEP;
 
 	qas_cos_table = (double *)malloc(sizeof(double) * qas_num_bands);
