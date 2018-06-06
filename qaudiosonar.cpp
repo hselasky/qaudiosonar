@@ -36,6 +36,7 @@ size_t qas_window_size;
 size_t qas_in_sequence_number;
 size_t qas_out_sequence_number;
 QasMainWindow *qas_mw;
+double qas_tuning[2] = {1.0, 0.0};
 
 static void
 atomic_init(void)
@@ -447,17 +448,23 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_graph_lock();
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
-		double simp[12] = {};
+		double simp[BAND_MAX];
 		double max;
 		size_t x, z;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
-			if (band[3 * x] > simp[x / QAS_WAVE_STEP_LOG2])
-				simp[x / QAS_WAVE_STEP_LOG2] = band[3 * x];
 			if (band[3 * x] > band[3 * z])
 				z = x;
 		}
-
+		for (x = 0; x != BAND_MAX; x++) {
+			size_t t = (x + BAND_MAX - z) % QAS_WAVE_STEP_LOG2;
+			if (t >= (3 * QAS_WAVE_STEP_LOG2 / 4) ||
+			    t < (QAS_WAVE_STEP_LOG2 / 4))
+				simp[x] = band[3 * z];
+			else
+				simp[x] = 0;
+		}
+		
 		max = band[3 * z];
 		if (max < 2.0)
 			max = 2.0;
@@ -473,7 +480,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (simp[x / QAS_WAVE_STEP_LOG2] / max) * 255.0;
+			int other = level + (simp[x] / max) * 255.0;
 			if (other > 255)
 				other = 255;
 			else if (other < 0)
@@ -841,7 +848,13 @@ QasMainWindow :: QasMainWindow()
 	pb = new QPushButton(tr("RecordTog"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_record()));
 	gl->addWidget(pb, 2,2,1,1);
-	
+
+	tuning = new QSpinBox();
+	tuning->setRange(-999,999);
+	tuning->setValue(0);
+	tuning->setPrefix("Fine tuning +/-999: ");
+	connect(tuning, SIGNAL(valueChanged(int)), this, SLOT(handle_tuning()));
+
 	edit = new QPlainTextEdit();
 	
 	qbw = new QWidget();
@@ -853,9 +866,10 @@ QasMainWindow :: QasMainWindow()
 	gl->setRowStretch(2,1);
 
 	glb->addWidget(lbl_max, 1,0,1,1);
-	glb->addWidget(qb, 2,0,1,1);
-	glb->addWidget(edit, 3,0,1,1);
-	glb->setRowStretch(2,1);
+	glb->addWidget(tuning, 2,0,1,1);
+	glb->addWidget(qb, 3,0,1,1);
+	glb->addWidget(edit, 4,0,1,1);
+	glb->setRowStretch(3,1);
 
 	connect(this, SIGNAL(handle_append_text(const QString)), edit, SLOT(appendPlainText(const QString &)));
 
@@ -909,6 +923,15 @@ void
 QasMainWindow :: handle_view()
 {
 	qv->show();
+}
+
+void
+QasMainWindow :: handle_tuning()
+{
+	double value = 2.0 * M_PI * pow(2.0, (double)tuning->value() / 12000.0);
+
+	qas_tuning[0] = cos(value);
+	qas_tuning[1] = sin(value);
 }
 
 void

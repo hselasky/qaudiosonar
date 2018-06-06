@@ -218,6 +218,7 @@ public:
 	QLineEdit *led_dsp_write;
 	QLineEdit *led_midi_write;
 	QPlainTextEdit *edit;
+	QSpinBox *tuning;
 
 signals:
 	void handle_append_text(const QString);
@@ -230,6 +231,7 @@ public slots:
 	void handle_slider(int);
 	void handle_config();
 	void handle_view();
+	void handle_tuning();
 };
 
 /* ============== GENERIC SUPPORT ============== */
@@ -247,6 +249,7 @@ extern int qas_freeze;
 extern int qas_record;
 extern double qas_view_decay;
 extern QasMainWindow *qas_mw;
+extern double qas_tuning[2];
 
 void atomic_lock();
 void atomic_unlock();

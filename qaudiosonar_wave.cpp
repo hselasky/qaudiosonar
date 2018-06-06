@@ -110,6 +110,12 @@ qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
 
 	indata += qas_window_size + QAS_CORR_SIZE;
 
+	/* adjust according to tuning */
+	n_cos = qas_tuning[0] * k_cos - qas_tuning[1] * k_sin;
+	n_sin = qas_tuning[0] * k_sin + qas_tuning[1] * k_cos;
+	k_cos = n_cos;
+	k_sin = n_sin;
+
 	for (size_t x = 0; x != qas_window_size; x++, indata--) {
 		cos_in += t_cos * indata[0];
 		sin_in += t_sin * indata[0];
