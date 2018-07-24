@@ -31,6 +31,12 @@ static pthread_mutex_t atomic_mtx;
 static pthread_mutex_t atomic_graph;
 static pthread_cond_t atomic_cv;
 
+static const char *qas_key_map[12] = {
+  "C%1", "D%1B", "D%1", "E%1B", "E%1",
+  "F%1", "G%1B", "G%1", "A%1B",
+  "A%1", "H%1B", "H%1",
+};
+
 int qas_num_workers = 2;
 size_t qas_window_size;
 size_t qas_in_sequence_number;
@@ -365,63 +371,17 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
-		size_t hi;
-		size_t seq;
-		int h = height();
-
-		seq = QasGetSequenceNumber(&hi);
-
-		double *band = qas_display_get_band(((h - event->y()) * hi) / h + seq);
-		size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
-
-		while (x_off != BAND_MAX) {
-			if (band[3 * x_off] != 0.0)
-				break;
-			x_off++;
-		}
-		while (x_off != 0) {
-			if (band[3 * x_off] != 0.0)
-				break;
-			x_off--;
-		}
-
-		size_t real_band = band[3 * x_off + 2];
-		QString str(qas_descr_table[real_band]);
-		str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(real_band));
-		mw->edit->appendPlainText(str);
+		int key = (9 + (12 * event->x()) / width()) % 12;
+		mw->edit->appendPlainText(QString(qas_key_map[key]).arg(5));
 	}
 }
 
 void
 QasBand :: mouseMoveEvent(QMouseEvent *event)
 {
-	size_t hi;
-	size_t seq;
-	int h = height();
+	int key = (9 + (12 * event->x()) / width()) % 12;
 
-	seq = QasGetSequenceNumber(&hi);
-
-	QString str;
-	double *band = qas_display_get_band(((h - event->y()) * hi) / h + seq);
-	size_t x_off = ((BAND_MAX * event->x()) / width()) % BAND_MAX;
-
-	while (x_off != BAND_MAX) {
-		if (band[3 * x_off] != 0.0)
-			break;
-		x_off++;
-	}
-	while (x_off != 0) {
-		if (band[3 * x_off] != 0.0)
-			break;
-		x_off--;
-	}
-	size_t real_band = band[3 * x_off + 2];
-
-	str = qas_descr_table[real_band];
-	str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(real_band));
-
-	if (toolTip() != str)
-		setToolTip(str);
+	setToolTip(QString(qas_key_map[key]).arg(5));
 }
 
 void
@@ -447,9 +407,6 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_graph_lock();
 
 	double simp[BAND_MAX] = {};
-	static double simp_last[BAND_MAX];
-	static uint32_t keys;
-	static uint32_t keys_last;
 
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
@@ -459,36 +416,27 @@ QasBand :: paintEvent(QPaintEvent *event)
 			if (band[3 * x] > band[3 * z])
 				z = x;
 		}
-		for (x = 0; x != BAND_MAX; x++) {
-			size_t t = (x + BAND_MAX - z + (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
-			if (t < (QAS_WAVE_STEP_LOG2 / 2))
-				simp[x] += 1;
+		for (x = 0; x != (QAS_WAVE_STEP_LOG2 / 2); x++) {
+			size_t t = (x + z + BAND_MAX - (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
+			simp[t] += band[3 * z];
 		}
 	}
 
-	for (size_t x = 0; x != BAND_MAX; x += QAS_WAVE_STEP_LOG2) {
-		uint32_t m = (1U << (x / QAS_WAVE_STEP_LOG2));
-		if (simp[x] > simp_last[x]) {
-			keys |= m;
-		} else if (simp[x] < simp_last[x]) {
-			keys &= ~m;
-		}
-	}
+	size_t s_max;
 
-	memcpy(simp_last, simp, sizeof(simp));
+	for (size_t x = s_max = 0; x != BAND_MAX; x++) {
+		if (simp[x] > simp[s_max])
+			s_max = x;
+	}
 
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
 		double max;
-		size_t x, z, t;
+		size_t x, z;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
 			if (band[3 * x] > band[3 * z])
 				z = x;
-		}
-		for (x = t = 0; x != BAND_MAX; x++) {
-			if (simp[x] > simp[t])
-				t = x;
 		}
 
 		max = band[3 * z];
@@ -500,13 +448,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 			double value = band[3 * x];
 			if (value != max)
 				value /= 2.0;
+
 			int level = pow(value / max, 3) * 255.0;
 			if (level > 255)
 				level = 255;
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (simp[x] / simp[t]) * 255.0;
+			int other = level + (simp[x] / simp[s_max]) * 255.0;
 			if (other > 255)
 				other = 255;
 			else if (other < 0)
@@ -514,36 +463,21 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 			QColor hc(255 - other, 255 - level, 255 - other, 255);
 			size_t yo = hi - 1 - y;
-			accu.setPixelColor(x, yo, hc);
+			accu.setPixelColor((x + QAS_WAVE_STEP_LOG2 / 2) % BAND_MAX, yo, hc);
 		}
 	}
 	atomic_graph_unlock();
 
-	if (keys != keys_last) {
-		uint32_t delta = (keys ^ keys_last);
-		keys_last = keys;
+	if (qas_record != 0) {
+		QString str;
+		size_t key = 12 * 5 + (9 + real_band / QAS_WAVE_STEP) % 12;
 
-		if (qas_record != 0) {
-			const char *map[12] = {
-				"A%1", "H%1B", "H%1", "C%1",
-				"D%1B", "D%1", "E%1B", "E%1",
-				"F%1", "G%1B", "G%1", "A%1B"
-			};
-			QString str;
+		str += QString(qas_key_map[key % 12]).arg(key / 12);
 
-			for (size_t x = 0; x != 12; x++) {
-				int key = 12 * 5 + ((x + 9) % 12);
+		qas_midi_key_send(0, key, 90, 50);
+		qas_midi_key_send(0, key, 0, 0);
 
-				if ((delta >> x) & 1) {
-					str += QString(map[x]).arg(5);
-					str += " ";
-
-					qas_midi_key_send(0, key, 90, 50);
-					qas_midi_key_send(0, key, 0, 0);
-				}
-			}
-			mw->handle_append_text(str);
-		}
+		mw->handle_append_text(str);
 	}
 
 	paint.drawImage(QRect(0,0,w,h),accu);
