@@ -445,10 +445,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 	accu.fill(white);
 
 	atomic_graph_lock();
+
+	double simp[BAND_MAX] = {};
+	static double simp_last[BAND_MAX];
+	static uint32_t keys;
+	static uint32_t keys_last;
+
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
-		double simp[BAND_MAX];
-		double max;
 		size_t x, z;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
@@ -456,14 +460,37 @@ QasBand :: paintEvent(QPaintEvent *event)
 				z = x;
 		}
 		for (x = 0; x != BAND_MAX; x++) {
-			size_t t = (x + BAND_MAX - z) % QAS_WAVE_STEP_LOG2;
-			if (t >= (3 * QAS_WAVE_STEP_LOG2 / 4) ||
-			    t < (QAS_WAVE_STEP_LOG2 / 4))
-				simp[x] = band[3 * z];
-			else
-				simp[x] = 0;
+			size_t t = (x + BAND_MAX - z + (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
+			if (t < (QAS_WAVE_STEP_LOG2 / 2))
+				simp[x] += 1;
 		}
-		
+	}
+
+	for (size_t x = 0; x != BAND_MAX; x += QAS_WAVE_STEP_LOG2) {
+		uint32_t m = (1U << (x / QAS_WAVE_STEP_LOG2));
+		if (simp[x] > simp_last[x]) {
+			keys |= m;
+		} else if (simp[x] < simp_last[x]) {
+			keys &= ~m;
+		}
+	}
+
+	memcpy(simp_last, simp, sizeof(simp));
+
+	for (size_t y = 0; y != hi; y++) {
+		double *band = qas_display_get_band(y + seq);
+		double max;
+		size_t x, z, t;
+
+		for (z = x = 0; x != BAND_MAX; x++) {
+			if (band[3 * x] > band[3 * z])
+				z = x;
+		}
+		for (x = t = 0; x != BAND_MAX; x++) {
+			if (simp[x] > simp[t])
+				t = x;
+		}
+
 		max = band[3 * z];
 		if (max < 2.0)
 			max = 2.0;
@@ -479,7 +506,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (simp[x] / max) * 255.0;
+			int other = level + (simp[x] / simp[t]) * 255.0;
 			if (other > 255)
 				other = 255;
 			else if (other < 0)
@@ -491,6 +518,33 @@ QasBand :: paintEvent(QPaintEvent *event)
 		}
 	}
 	atomic_graph_unlock();
+
+	if (keys != keys_last) {
+		keys_last = keys;
+
+		if (qas_record != 0) {
+			const char *map[12] = {
+				"A%1", "H%1B", "H%1", "C%1",
+				"D%1B", "D%1", "E%1B", "E%1",
+				"F%1", "G%1B", "G%1", "A%1B"
+			};
+			QString str;
+
+			for (size_t x = 0; x != 12; x++) {
+				int key = 12 * 5 + ((x + 9) % 12);
+
+				if (~(keys >> x) & 1)
+					continue;
+
+				str += QString(map[x]).arg(5);
+				str += " ";
+
+				qas_midi_key_send(0, key, 90, 50);
+				qas_midi_key_send(0, key, 0, 0);
+			}
+			mw->handle_append_text(str);
+		}
+	}
 
 	paint.drawImage(QRect(0,0,w,h),accu);
 

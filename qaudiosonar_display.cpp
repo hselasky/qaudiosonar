@@ -111,8 +111,7 @@ qas_display_worker_done(double *data, double *band)
 {
 	size_t wi = qas_display_width() / 3;
 	size_t bwi = qas_display_band_width() / 3;
-	static size_t last_band = -1ULL;
-	size_t x,y,z;
+	size_t x,y;
 
 	memset(band, 0, sizeof(double) * 3 * bwi);
 
@@ -121,55 +120,6 @@ qas_display_worker_done(double *data, double *band)
 		if (data[3 * x] > band[3 * y])
 			memcpy(band + 3 * y, data + 3 * x, 3 * sizeof(double));
 	}
-
-	for (x = z = 0; x != bwi; x++) {
-		if (band[3 * x] > band[3 * z])
-			z = x;
-	}
-
-	if (band[3 * z] < 16.0)
-		return;
-
-	z = band[3 * z + 2];
-
-	int key = (z / QAS_WAVE_STEP) + 9;
-	int chan = 0;
-
-	if (z & 1)
-		chan |= 128;
-	if (z & 2)
-		chan |= 64;
-	if (z & 4)
-		chan |= 32;
-	if (z & 8)
-		chan |= 16;
-	if (z & 16)
-		chan |= 8;
-	if (z & 32)
-		chan |= 4;
-	if (z & 64)
-		chan |= 2;
-	if (z & 128)
-		chan |= 1;
-
-	/* MIDI does only have 16 channels */
-	chan &= 0x0F;
-
-	if (qas_record != 0 && z != last_band && z < qas_num_bands) {
-		QString str(qas_descr_table[z]);
-		str += QString(" /* %1Hz R=%2 */")
-		  .arg(QAS_FREQ_TABLE_ROUNDED(z))
-		  .arg((double)(z % QAS_WAVE_STEP) / (double)QAS_WAVE_STEP);
-		qas_mw->handle_append_text(str);
-
-		if (key > -1 && key < 128) {
-			qas_midi_key_send(chan, key, 90, 50);
-			qas_midi_key_send(chan, key, 0, 0);
-		}
-	}
-
-	/* store last band */
-	last_band = z;
 }
 
 static void *
