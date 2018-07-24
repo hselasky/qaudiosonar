@@ -520,6 +520,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	atomic_graph_unlock();
 
 	if (keys != keys_last) {
+		uint32_t delta = (keys ^ keys_last);
 		keys_last = keys;
 
 		if (qas_record != 0) {
@@ -533,14 +534,13 @@ QasBand :: paintEvent(QPaintEvent *event)
 			for (size_t x = 0; x != 12; x++) {
 				int key = 12 * 5 + ((x + 9) % 12);
 
-				if (~(keys >> x) & 1)
-					continue;
+				if ((delta >> x) & 1) {
+					str += QString(map[x]).arg(5);
+					str += " ";
 
-				str += QString(map[x]).arg(5);
-				str += " ";
-
-				qas_midi_key_send(0, key, 90, 50);
-				qas_midi_key_send(0, key, 0, 0);
+					qas_midi_key_send(0, key, 90, 50);
+					qas_midi_key_send(0, key, 0, 0);
+				}
 			}
 			mw->handle_append_text(str);
 		}
