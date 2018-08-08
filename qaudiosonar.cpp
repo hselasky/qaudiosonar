@@ -387,6 +387,8 @@ QasBand :: mouseMoveEvent(QMouseEvent *event)
 void
 QasBand :: paintEvent(QPaintEvent *event)
 {
+	enum { LIMIT = 8 };
+
 	int w = width();
 	int h = height();
 	size_t hi;
@@ -406,26 +408,42 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	atomic_graph_lock();
 
-	double simp[BAND_MAX] = {};
+	double bg[hi][BAND_MAX];
+
+	memset(bg, 0, sizeof(bg));
 
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
 		size_t x, z;
+		size_t start;
+		size_t stop;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
 			if (band[3 * x] > band[3 * z])
 				z = x;
 		}
-		for (x = 0; x != (QAS_WAVE_STEP_LOG2 / 2); x++) {
-			size_t t = (x + z + BAND_MAX - (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
-			simp[t] += band[3 * z];
+		if (y > LIMIT)
+			start = y - LIMIT;
+		else
+			start = 0;
+		if ((y + LIMIT) > hi)
+			stop = hi;
+		else
+			stop = y + LIMIT;
+
+		/* fill nice square */
+		for (size_t t = start; t != stop; t++) {
+			for (x = 0; x != (QAS_WAVE_STEP_LOG2 / 2); x++) {
+				size_t u = (x + z + BAND_MAX - (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
+				bg[t][u] += band[3 * z];
+			}
 		}
 	}
 
 	size_t s_max;
 
-	for (size_t x = s_max = 0; x != BAND_MAX; x++) {
-		if (simp[x] > simp[s_max])
+	for (size_t x = s_max = 0; x != (hi * BAND_MAX); x++) {
+		if (bg[0][x] > bg[0][s_max])
 			s_max = x;
 	}
 
@@ -455,7 +473,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (simp[x] / simp[s_max]) * 255.0;
+			int other = level + (bg[y][x] / bg[0][s_max]) * 255.0;
 			if (other > 255)
 				other = 255;
 			else if (other < 0)
