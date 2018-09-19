@@ -519,7 +519,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	if (qas_record != 0 && real_amp >= qas_midi_level) {
 		QString str;
-		size_t key = 12 * 5 + (9 + real_band / QAS_WAVE_STEP) % 12;
+		size_t key = 12 * 5 + (9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP) % 12;
 
 		str = QString(qas_key_map[key % 12]).arg(key / 12);
 		str += QString(" /* L=%1 F=%2Hz */")
