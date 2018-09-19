@@ -150,15 +150,15 @@ QasBandWidthBox :: handle_value_changed(int value)
 
 QasMidilevelBox :: QasMidilevelBox()
 {
-	setTitle("MIDI level: 2**62");
+	setTitle(QString("MIDI detect level: %1").arg(0));
 
 	grid = new QGridLayout(this);
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(0, 62);
+	pSB->setRange(0, 63);
 	pSB->setSingleStep(1);
-	pSB->setValue(62);
+	pSB->setValue(0);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
 
 	grid->addWidget(pSB, 0,0,1,1);
@@ -167,7 +167,30 @@ QasMidilevelBox :: QasMidilevelBox()
 void
 QasMidilevelBox :: handle_value_changed(int value)
 {
-	setTitle(QString("MIDI level: 2**%1").arg(value));
+	setTitle(QString("MIDI detect level: %1").arg(value));
+	valueChanged(value);
+}
+
+QasNoiselevelBox :: QasNoiselevelBox()
+{
+	setTitle(QString("Noise level: %1").arg(0));
+
+	grid = new QGridLayout(this);
+
+	pSB = new QScrollBar(Qt::Horizontal);
+
+	pSB->setRange(-16, 16);
+	pSB->setSingleStep(1);
+	pSB->setValue(0);
+	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
+
+	grid->addWidget(pSB, 0,0,1,1);
+}
+
+void
+QasNoiselevelBox :: handle_value_changed(int value)
+{
+	setTitle(QString("Noise level: %1").arg(value));
 	valueChanged(value);
 }
 
@@ -194,6 +217,7 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	bp_box_0 = new QasBandPassBox();
 	bw_box_0 = new QasBandWidthBox();
 	ml_box_0 = new QasMidilevelBox();
+	nl_box_0 = new QasNoiselevelBox();
 	handle_filter_0(0);
 
 	connect(map_source_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_0(int)));
@@ -202,7 +226,8 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
 	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
 	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
-	connect(ml_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
+	connect(ml_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
+	connect(nl_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
 
 	gl->addWidget(map_source_0, 0,0,1,1);
 	gl->addWidget(map_source_1, 1,0,1,1);
@@ -210,7 +235,8 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	gl->addWidget(map_output_1, 3,0,1,1);
 	gl->addWidget(bp_box_0, 4,0,1,1);
 	gl->addWidget(bw_box_0, 5,0,1,1);
-	gl->addWidget(ml_box_0, 6,0,1,1);
+	gl->addWidget(nl_box_0, 6,0,1,1);
+	gl->addWidget(ml_box_0, 7,0,1,1);
 
 	setWindowTitle(tr("Quick Audio Sonar v1.5"));
 	setWindowIcon(QIcon(":/qaudiosonar.png"));
@@ -321,7 +347,8 @@ QasConfig :: handle_filter_0(int value)
 	double temp[QAS_CORR_SIZE];
 	double adjust = bw_box_0->pSB->value() / 2.0;
 	double center = bp_box_0->pSB->value();
-	int level = ml_box_0->pSB->value();
+	int midiLevel = ml_box_0->pSB->value();
+	int noiseLevel = nl_box_0->pSB->value();
 
 	memset(temp, 0, sizeof(temp));
 	qas_band_pass(center - adjust, center + adjust, temp, QAS_CORR_SIZE);
@@ -329,7 +356,8 @@ QasConfig :: handle_filter_0(int value)
 	atomic_lock();
 	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
-	qas_midi_level = 1LL << level;
+	qas_midi_level = pow(2.0, midiLevel);
+	qas_noise_level = pow(2.0, noiseLevel);
 	atomic_unlock();
 }
 
@@ -393,6 +421,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	int h = height();
 	size_t hi;
 	size_t real_band = 0;
+	double real_amp = 0;
 
 	if (w == 0 || h == 0)
 		return;
@@ -460,7 +489,9 @@ QasBand :: paintEvent(QPaintEvent *event)
 		max = band[3 * z];
 		if (max < 2.0)
 			max = 2.0;
+
 		real_band = band[3 * z + 2];
+		real_amp = band[3 * z];
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
 			double value = band[3 * x];
@@ -486,11 +517,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 	}
 	atomic_graph_unlock();
 
-	if (qas_record != 0) {
+	if (qas_record != 0 && real_amp >= qas_midi_level) {
 		QString str;
 		size_t key = 12 * 5 + (9 + real_band / QAS_WAVE_STEP) % 12;
 
-		str += QString(qas_key_map[key % 12]).arg(key / 12);
+		str = QString(qas_key_map[key % 12]).arg(key / 12);
+		str += QString(" /* L=%1 F=%2Hz */")
+		    .arg((int)(log(real_amp)/log(2.0)))
+		    .arg(QAS_FREQ_TABLE_ROUNDED(real_band));
 
 		qas_midi_key_send(0, key, 90, 50);
 		qas_midi_key_send(0, key, 0, 0);

@@ -36,6 +36,7 @@ char dsp_read_device[1024];
 char dsp_write_device[1024];
 double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_midi_level = 1LL << 62;
+double qas_noise_level = 1.0;
 double qas_view_decay = 0;
 
 static struct dsp_buffer qas_read_buffer[2];
@@ -124,7 +125,7 @@ qas_brown_noise(void)
 	temp ^= 0x800000;
 	if (temp & 0x800000)
 		temp |= (-0x800000);
-	return (temp);
+	return (temp * qas_noise_level);
 }
 
 static int32_t
@@ -144,7 +145,7 @@ qas_white_noise(void)
 	temp ^= 0x800000;
 	if (temp & 0x800000)
 		temp |= (-0x800000);
-	return (temp);
+	return (temp * qas_noise_level);
 }
 
 static void *
