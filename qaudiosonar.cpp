@@ -421,6 +421,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	int h = height();
 	size_t hi;
 	size_t real_band = 0;
+	ssize_t real_offset = 0;
 	double real_amp = 0;
 
 	if (w == 0 || h == 0)
@@ -517,14 +518,24 @@ QasBand :: paintEvent(QPaintEvent *event)
 	}
 	atomic_graph_unlock();
 
+	/* compute offset */
+	real_offset = (real_band + (QAS_WAVE_STEP / 2));
+	real_offset -= real_offset % QAS_WAVE_STEP;
+	real_offset = (real_band - real_offset);
+	real_offset %= QAS_WAVE_STEP;
+
+	char temp[8];
+	snprintf(temp, sizeof(temp), "%1.3f", (float)real_offset / (float)QAS_WAVE_STEP);
+
 	if (qas_record != 0 && real_amp >= qas_midi_level) {
 		QString str;
 		size_t key = 12 * 5 + (9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP) % 12;
 
 		str = QString(qas_key_map[key % 12]).arg(key / 12);
-		str += QString(" /* L=%1 F=%2Hz */")
+		str += QString(" /* L=%1 F=%2Hz R=%3 */")
 		    .arg((int)(log(real_amp)/log(2.0)))
-		    .arg(QAS_FREQ_TABLE_ROUNDED(real_band));
+		    .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
+		    .arg(QString(temp));
 
 		qas_midi_key_send(0, key, 90, 50);
 		qas_midi_key_send(0, key, 0, 0);
@@ -537,8 +548,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	QString str(qas_descr_table[real_band]);
 	str += QString(" - %1Hz\nR=%2")
 	  .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
-	  .arg((int)(1000.0 * ((double)(real_band % QAS_WAVE_STEP)) /
-		     (double)QAS_WAVE_STEP) / 1000.0);
+	  .arg(QString(temp));
 	mw->lbl_max->setText(str);
 }
 
