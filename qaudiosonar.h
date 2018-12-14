@@ -192,6 +192,8 @@ public:
 	QasMainWindow *mw;
 	QTimer *watchdog;
 
+	QString getText(QMouseEvent *);
+
 	void paintEvent(QPaintEvent *);
 	void mousePressEvent(QMouseEvent *);
 	void mouseMoveEvent(QMouseEvent *);
@@ -204,9 +206,12 @@ class QasGraph : public QWidget {
 	Q_OBJECT
 public:
 	QasGraph(QasMainWindow *);
-	~QasGraph() { };
+	~QasGraph();
 	QasMainWindow *mw;
 	QTimer *watchdog;
+	double *mon_index;
+
+	QString getText(QMouseEvent *);
 
 	void paintEvent(QPaintEvent *);
 	void mousePressEvent(QMouseEvent *);

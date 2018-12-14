@@ -387,10 +387,25 @@ QasGraph :: QasGraph(QasMainWindow *_mw)
 	mw = _mw;
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
+	mon_index = new double [qas_window_size];
+	memset(mon_index, 0, sizeof(double) * qas_window_size);
 
 	setMinimumSize(256, 256);
 	setMouseTracking(1);
 	watchdog->start(500);
+}
+
+QasGraph :: ~QasGraph()
+{
+	delete mon_index;
+}
+
+QString
+QasBand :: getText(QMouseEvent *event)
+{
+	int key = (9 + (12 * event->x()) / width()) % 12;
+
+	return (QString(qas_key_map[key]).arg(5));
 }
 
 void
@@ -399,17 +414,14 @@ QasBand :: mousePressEvent(QMouseEvent *event)
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
-		int key = (9 + (12 * event->x()) / width()) % 12;
-		mw->edit->appendPlainText(QString(qas_key_map[key]).arg(5));
+		mw->edit->appendPlainText(getText(event));
 	}
 }
 
 void
 QasBand :: mouseMoveEvent(QMouseEvent *event)
 {
-	int key = (9 + (12 * event->x()) / width()) % 12;
-
-	setToolTip(QString(qas_key_map[key]).arg(5));
+	setToolTip(getText(event));
 }
 
 void
@@ -552,33 +564,52 @@ QasBand :: paintEvent(QPaintEvent *event)
 	mw->lbl_max->setText(str);
 }
 
+QString
+QasGraph :: getText(QMouseEvent *event)
+{
+	int graph = (4 * event->y()) / height();
+	int band;
+	int key;
+
+	switch (graph) {
+	case 0:
+	case 1:
+	case 3:
+		band = (qas_num_bands * event->x()) / width();
+		if (band > -1 && band < (int)qas_num_bands) {
+			return QString(qas_descr_table[band]) +
+			  QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
+		} else {
+			return QString();
+		}
+	default:
+		for (key = 0; key != (int)qas_window_size; key++) {
+			int pos = mon_index[key] /
+			    mon_index[qas_window_size - 1] * (double)width();
+			if (pos >= event->x())
+				break;
+		}
+		key = qas_window_size - 1 - key;
+		return (QString("/* %1ms %2m */")
+		    .arg((double)((int)((key * 100000ULL) / qas_sample_rate) / 100.0))
+		    .arg((double)((int)((key * 34000ULL) / qas_sample_rate) / 100.0)));
+	}
+}
+
 void
 QasGraph :: mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
 	} else {
-		int band = (qas_num_bands * event->x()) / width();
-		if (band > -1 && (size_t)band < qas_num_bands) {
-			QString str(qas_descr_table[band]);
-			str += QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
-			mw->edit->appendPlainText(str);
-		}
+		mw->edit->appendPlainText(getText(event));
 	}
 }
 
 void
 QasGraph :: mouseMoveEvent(QMouseEvent *event)
 {
-	QString str;
-	int band = (qas_num_bands * event->x()) / width();
-
-	if (band > -1 && (size_t)band < qas_num_bands) {
-		str = qas_descr_table[band];
-		str += QString(" - %1Hz").arg(QAS_FREQ_TABLE_ROUNDED(band));
-	}
-	if (toolTip() != str)
-		setToolTip(str);
+	setToolTip(getText(event));
 }
 
 void
@@ -604,30 +635,26 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	QImage hist(wi, hi, QImage::Format_ARGB32);
 	QImage power(wi, hg, QImage::Format_ARGB32);
-	QImage iso(wi, hg, QImage::Format_ARGB32);
 	QImage phase(wi, hg, QImage::Format_ARGB32);
 	QImage corr(w, hg, QImage::Format_ARGB32);
 
 	QColor transparent = QColor(0,0,0,0);
 	QColor power_c = QColor(0,0,0,255);
 	QColor phase_c = QColor(192,192,0,255);
-	QColor iso_c = QColor(192,192,192,255);
 	QColor corr_c = QColor(255,0,0,255);
 	QColor white(255,255,255);
 	QColor black(0,0,0);
 
-	iso.fill(transparent);
 	hist.fill(white);
 	power.fill(transparent);
 	phase.fill(transparent);
 	corr.fill(transparent);
-	
-	double mon_index[wc];
+
 	double mon_sum = 0.0;
 	for (size_t x = 0; x != wc; x++) {
 		size_t delta = (x > zoom) ? x - zoom : zoom - x;
 		mon_index[x] = mon_sum;
-		mon_sum += wc * wc - delta * delta;
+		mon_sum += pow(wc,4) - pow(delta,4);
 	}
 	atomic_graph_lock();
 	do {
@@ -681,17 +708,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			max = 2.0;
 
 		if (y == hi - 1) {
-			double iso_amp[QAS_STANDARD_AUDIO_BANDS];
-
-			for (x = 0; x != QAS_STANDARD_AUDIO_BANDS; x++)
-				iso_amp[x] = 1.0;
-
-			for (x = 0; x != wi; x++) {
-				t = qas_iso_table[x];
-				if (iso_amp[t] < data[3 * x])
-					iso_amp[t] = data[3 * x];
-			}
-
 			for (z = x = 0; x != wi; x++) {
 				if (data[3 * x] < 1.0)
 					continue;
@@ -714,14 +730,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 						phase_y = (int)(hg - 1);
 					for (int n = 0; n != phase_y; n++)
 						phase.setPixelColor(t, hg - 1 - n, phase_c);
-
-					int iso_y = (double)(iso_amp[qas_iso_table[z]] / max) * (hg - 1);
-					if (iso_y < 0)
-						iso_y = 0;
-					else if (iso_y > (int)(hg - 1))
-						iso_y = (int)(hg - 1);
-					for (int n = 0; n != iso_y; n++)
-						iso.setPixelColor(t, hg - 1 - n, iso_c);
 				}
 				z = x;
 			}
@@ -749,9 +757,8 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setRenderHints(QPainter::Antialiasing|
 			     QPainter::TextAntialiasing);
 
-	paint.drawImage(QRect(0,2*rg,w,2*rg), hist);
+	paint.drawImage(QRect(0,3*rg,w,rg), hist);
 	paint.drawImage(QRect(0,2*rg,w,rg), corr);
-	paint.drawImage(QRect(0,0,w,rg), iso);
 	paint.drawImage(QRect(0,0,w,rg), power);
 	paint.drawImage(QRect(0,rg,w,rg), phase);
 
@@ -759,7 +766,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setPen(QPen(black,0));
 	paint.setBrush(black);
 	paint.drawRect(QRectF(0,rg-2,w,4));
-	
+
 	QFont fnt(paint.font());
 
 	fnt.setPixelSize(16);
@@ -786,17 +793,12 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setBrush(phase_c);
 	paint.drawText(QPoint(6*16,32),str);
 
-	str = "ISO";
-	paint.setPen(QPen(iso_c,0));
-	paint.setBrush(iso_c);
-	paint.drawText(QPoint(12*16,32),str);
-
 	str = "CORRELATION ";
 	str += corr_sign;
 	paint.setPen(QPen(corr_c,0));
 	paint.setBrush(corr_c);
-	paint.drawText(QPoint(16*16,32),str);
-	
+	paint.drawText(QPoint(12*16,32),str);
+
 	uint8_t iso_num = 255;
 	int last_x = 0;
 	int diff_y = 0;
