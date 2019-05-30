@@ -538,13 +538,12 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	char temp[8];
 	snprintf(temp, sizeof(temp), "%1.3f", (float)real_offset / (float)QAS_WAVE_STEP);
+	size_t key = 9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
+	QString str_key;
+	str_key = QString(qas_key_map[key % 12]).arg(key / 12);
 
 	if (qas_record != 0 && real_amp >= qas_midi_level) {
-		QString str;
-		size_t key = 12 * 5 + (9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP) % 12;
-
-		str = QString(qas_key_map[key % 12]).arg(key / 12);
-		str += QString(" /* L=%1 F=%2Hz R=%3 */")
+		QString str = str_key + QString(" /* L=%1 F=%2Hz R=%3 */")
 		    .arg((int)(log(real_amp)/log(2.0)))
 		    .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
 		    .arg(QString(temp));
@@ -557,8 +556,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	paint.drawImage(QRect(0,0,w,h),accu);
 
-	QString str(qas_descr_table[real_band]);
-	str += QString(" - %1Hz\nR=%2")
+	QString str = str_key +
+	  QString(" - %1Hz\nR=%2")
 	  .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
 	  .arg(QString(temp));
 	mw->lbl_max->setText(str);
