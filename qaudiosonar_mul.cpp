@@ -39,15 +39,15 @@
 struct qas_x3_input_double {
 	double	a;
 	double	b;
-	size_t	toggle;
-} __aligned(32);
+} __aligned(16);
 
 /*
  * <input size> = "stride"
  * <output size> = 2 * "stride"
  */
 static void
-qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, double *ptr_high, const size_t stride)
+qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, double *ptr_high,
+    const size_t stride, const uint8_t toggle)
 {
 	size_t x;
 	size_t y;
@@ -55,9 +55,7 @@ qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, d
 	if (stride >= (1UL << QAS_X3_LOG2_COMBA)) {
 		const size_t strideh = stride >> 1;
 
-		input->toggle ^= stride;
-
-		if (input->toggle & stride) {
+		if (toggle) {
 
 			/* inverse step */
 			for (x = 0; x != strideh; x++) {
@@ -72,12 +70,12 @@ qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, d
 				ptr_high[x] = a + b + c + d;
 			}
 
-			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh);
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh, toggle);
 
 			for (x = 0; x != strideh; x++)
 				ptr_low[x + strideh] = -ptr_low[x + strideh];
 
-			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh);
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh, toggle);
 
 			/* forward step */
 			for (x = 0; x != strideh; x++) {
@@ -95,9 +93,9 @@ qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, d
 				input[x + strideh].b += input[x].b;
 			}
 
-			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh);
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh, !toggle);
 		} else {
-			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh);
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh, !toggle);
 
 			/* inverse step */
 			for (x = 0; x != strideh; x++) {
@@ -115,12 +113,12 @@ qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, d
 				input[x + strideh].b -= input[x].b;
 			}
 
-			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh);
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh, toggle);
 
 			for (x = 0; x != strideh; x++)
 				ptr_low[x + strideh] = -ptr_low[x + strideh];
 
-			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh);
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh, toggle);
 
 			/* forward step */
 			for (x = 0; x != strideh; x++) {
@@ -168,9 +166,8 @@ qas_x3_multiply_double(double *va, double *vb, double *pc, const size_t max)
 	for (x = 0; x != max; x++) {
 		input[x].a = va[x];
 		input[x].b = vb[x];
-		input[x].toggle = 0;
 	}
 
 	/* do multiplication */
-	qas_x3_multiply_sub_double(input, pc, pc + max, max);
+	qas_x3_multiply_sub_double(input, pc, pc + max, max, 1);
 }
