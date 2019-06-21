@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2017-2019 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2017 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -47,7 +47,7 @@ struct qas_x3_input_double {
  */
 static void
 qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, double *ptr_high,
-    const size_t stride)
+    const size_t stride, const uint8_t toggle)
 {
 	size_t x;
 	size_t y;
@@ -55,43 +55,84 @@ qas_x3_multiply_sub_double(struct qas_x3_input_double *input, double *ptr_low, d
 	if (stride >= (1UL << QAS_X3_LOG2_COMBA)) {
 		const size_t strideh = stride >> 1;
 
-		/* inverse step */
-		for (x = 0; x != strideh; x++) {
-			double a, b, c, d;
+		if (toggle) {
 
-			a = ptr_low[x];
-			b = ptr_low[x + strideh];
-			c = ptr_high[x];
-			d = ptr_high[x + strideh];
+			/* inverse step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
 
-			ptr_low[x + strideh] = a + b;
-			ptr_high[x] = a + b + c + d;
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = a + b;
+				ptr_high[x] = a + b + c + d;
+			}
+
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh, toggle);
+
+			for (x = 0; x != strideh; x++)
+				ptr_low[x + strideh] = -ptr_low[x + strideh];
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh, toggle);
+
+			/* forward step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = -a - b;
+				ptr_high[x] = c + b - d;
+
+				input[x + strideh].a += input[x].a;
+				input[x + strideh].b += input[x].b;
+			}
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh, !toggle);
+		} else {
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh, !toggle);
+
+			/* inverse step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = -a - b;
+				ptr_high[x] = a + b + c + d;
+
+				input[x + strideh].a -= input[x].a;
+				input[x + strideh].b -= input[x].b;
+			}
+
+			qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh, toggle);
+
+			for (x = 0; x != strideh; x++)
+				ptr_low[x + strideh] = -ptr_low[x + strideh];
+
+			qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh, toggle);
+
+			/* forward step */
+			for (x = 0; x != strideh; x++) {
+				double a, b, c, d;
+
+				a = ptr_low[x];
+				b = ptr_low[x + strideh];
+				c = ptr_high[x];
+				d = ptr_high[x + strideh];
+
+				ptr_low[x + strideh] = b - a;
+				ptr_high[x] = c - b - d;
+			}
 		}
-
-		qas_x3_multiply_sub_double(input, ptr_low, ptr_low + strideh, strideh);
-
-		for (x = 0; x != strideh; x++)
-			ptr_low[x + strideh] = -ptr_low[x + strideh];
-
-		qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high + strideh, strideh);
-
-		/* forward step */
-		for (x = 0; x != strideh; x++) {
-			double a, b, c, d;
-
-			a = ptr_low[x];
-			b = ptr_low[x + strideh];
-			c = ptr_high[x];
-			d = ptr_high[x + strideh];
-
-			ptr_low[x + strideh] = -a - b;
-			ptr_high[x] = c + b - d;
-
-			input[x + strideh].a += input[x].a;
-			input[x + strideh].b += input[x].b;
-		}
-
-		qas_x3_multiply_sub_double(input + strideh, ptr_low + strideh, ptr_high, strideh);
 	} else {
 		for (x = 0; x != stride; x++) {
 			double value = input[x].a;
@@ -128,5 +169,5 @@ qas_x3_multiply_double(double *va, double *vb, double *pc, const size_t max)
 	}
 
 	/* do multiplication */
-	qas_x3_multiply_sub_double(input, pc, pc + max, max);
+	qas_x3_multiply_sub_double(input, pc, pc + max, max, 1);
 }
