@@ -1,10 +1,6 @@
 TEMPLATE        = app
-unix:CONFIG     += qt warn_on release
-win32:CONFIG    += windows warn_on release
-QT		+= core gui network
-greaterThan(QT_MAJOR_VERSION, 4) {
-QT		+= widgets
-}
+CONFIG          += qt warn_on release
+QT		+= core gui widgets multimedia
 HEADERS         += qaudiosonar.h
 HEADERS         += qaudiosonar_button.h
 HEADERS         += qaudiosonar_buttonmap.h
@@ -20,8 +16,39 @@ SOURCES         += qaudiosonar_display.cpp
 SOURCES         += qaudiosonar_wave.cpp
 RESOURCES	+= qaudiosonar.qrc
 TARGET          = qaudiosonar
-QTDIR_build:REQUIRES="contains(QT_CONFIG, full-config)"
-unix:LIBS      += -lpthread -lm
+LIBS            += -lpthread -lm
+
+macx {
+icons.path	= $${DESTDIR}/Contents/Resources
+icons.files	= MidiPlayerPro.icns
+QMAKE_BUNDLE_DATA += icons
+QMAKE_INFO_PLIST= qaudiosonar_osx.plist
+OTHER_FILES += MidiPlayerPro.entitlements
+}
+
+ios {
+icons.path	= $${PREFIX}
+icons.files	= qaudiosonar.png
+QMAKE_BUNDLE_DATA += icons
+QMAKE_INFO_PLIST= qaudiosonar_ios.plist
+QMAKE_APPLE_DEVICE_ARCHS= armv7 arm64
+QMAKE_IOS_DEPLOYMENT_TARGET= 9.2
+}
+
+android {
+QT += androidextras
+QT += gui-private
+}
+
+unix {
+  icons.path	= $${PREFIX}/share/pixmaps
+  icons.files	= qaudiosonar.png
+  INSTALLS	+= icons
+
+  desktop.path	= $${PREFIX}/share/applications
+  desktop.files	= qaudiosonar.desktop
+  INSTALLS	+= desktop
+}
 
 isEmpty(PREFIX) {
 PREFIX		= /usr/local
@@ -29,13 +56,3 @@ PREFIX		= /usr/local
 
 target.path	= $${PREFIX}/bin
 INSTALLS	+= target
-
-isEmpty(HAVE_BUNDLE_ICONS) {
-  icons.path	= $${PREFIX}/share/pixmaps
-  icons.files	= qaudiosonar.png
-  INSTALLS	+= icons
-}
-
-desktop.path	= $${PREFIX}/share/applications
-desktop.files	= qaudiosonar.desktop
-INSTALLS	+= desktop

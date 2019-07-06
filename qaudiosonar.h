@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2018 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2019 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -39,7 +39,9 @@
 #include <signal.h>
 
 #include <sys/filio.h>
+#if defined(__FreeBSD__) || defined(__linux__)
 #include <sys/soundcard.h>
+#endif
 #include <sys/queue.h>
 
 #include <QApplication>
@@ -57,13 +59,18 @@
 #include <QPlainTextEdit>
 #include <QGroupBox>
 #include <QImage>
+#include <QAudio>
+#include <QAudioDeviceInfo>
+#include <QAudioFormat>
+#include <QAudioInput>
+#include <QAudioOutput>
 
-#define	QAS_SAMPLE_RATE	48000
+#define	QAS_SAMPLES_MAX	48000
 #define	QAS_MIDI_BUFSIZE 1024
 #define	QAS_MUL_ORDER	10
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
-#define	QAS_BUFFER_SIZE ((QAS_SAMPLE_RATE / 8) - ((QAS_SAMPLE_RATE / 8) % QAS_MUL_SIZE)) /* samples */
-#define	QAS_DSP_SIZE	((QAS_SAMPLE_RATE / 16) - ((QAS_SAMPLE_RATE / 16) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_BUFFER_SIZE ((QAS_SAMPLES_MAX / 8) - ((QAS_SAMPLES_MAX / 8) % QAS_MUL_SIZE)) /* samples */
+#define	QAS_DSP_SIZE	((QAS_SAMPLES_MAX / 16) - ((QAS_SAMPLES_MAX / 16) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_WAVE_STEP (1U << QAS_WAVE_STEP_LOG2)
 #define	QAS_WAVE_STEP_LOG2 8
 
@@ -221,6 +228,39 @@ public slots:
 	void handle_watchdog();
 };
 
+class QasAudioIO : public QIODevice
+{
+	Q_OBJECT
+public:
+	QasAudioIO(QasMainWindow *_mw) {
+		mw = _mw;
+		audio_input = 0;
+		audio_output = 0;
+		open(QIODevice::ReadWrite);
+	};
+	qint64 readData(char *data, qint64 maxlen) override;
+	qint64 writeData(const char *data, qint64 len) override;
+	bool try_format(int channels, int bits, bool isOutput);
+
+	void stop() {
+		delete audio_input;
+		audio_input = 0;
+		delete audio_output;
+		audio_output = 0;
+	};
+
+	QAudioInput *audio_input;
+	QAudioOutput *audio_output;
+	QAudioDeviceInfo info;
+	QAudioFormat format;
+
+private:
+	QasMainWindow *mw;
+
+public slots:
+	void handle_audio_state(QAudio::State);
+};
+
 class QasMainWindow : public QWidget {
 	Q_OBJECT
 public:
@@ -241,6 +281,12 @@ public:
 	QLineEdit *led_midi_write;
 	QPlainTextEdit *edit;
 	QSpinBox *tuning;
+	QPushButton *but_dsp_rx;
+	QPushButton *but_dsp_tx;
+	QPushButton *but_midi_tx;
+
+	QasAudioIO *audio_input;
+  	QasAudioIO *audio_output;
 
 signals:
 	void handle_append_text(const QString);
@@ -254,6 +300,8 @@ public slots:
 	void handle_config();
 	void handle_view();
 	void handle_tuning();
+	void handle_dsp_rx();
+	void handle_dsp_tx();
 };
 
 /* ============== GENERIC SUPPORT ============== */

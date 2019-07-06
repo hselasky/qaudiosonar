@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2018 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2019 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -281,6 +281,138 @@ qas_dsp_audio_analyzer(void *arg)
 	return (0);
 }
 
+qint64
+QasAudioIO :: readData(char *data, qint64 maxlen)
+{
+  	static union {
+		int16_t s16[2 * QAS_DSP_SIZE];
+		int32_t s32[2 * QAS_DSP_SIZE];
+		char c[0];
+	} buffer;
+
+	int bits = format.sampleSize();
+	int chns = format.channelCount();
+	int mod = (bits * chns) / 8;
+	qint64 totlen = 0;
+
+	static int tt;
+
+	tt += maxlen;
+
+	while (maxlen > 0) {
+		qint64 buflen = mod * QAS_DSP_SIZE;
+		if (buflen > maxlen)
+			buflen = maxlen;
+
+		unsigned samples = (8 * buflen) / (chns * bits);
+
+		atomic_lock();
+		if (dsp_read_space(&qas_write_buffer[0]) < samples ||
+		    dsp_read_space(&qas_write_buffer[1]) < samples) {
+			atomic_wakeup();
+			atomic_unlock();
+			memset(data, 0, maxlen);
+			return (totlen + maxlen);
+		}
+
+		if (chns == 2) {
+			if (bits == 32) {
+				for (unsigned x = 0; x != samples; x++) {
+					buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
+					buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
+				}
+			} else {
+				for (unsigned x = 0; x != samples; x++) {
+					buffer.s16[2*x+0] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
+					buffer.s16[2*x+1] = dsp_get_sample(&qas_write_buffer[1]) / 65536.0;
+				}
+			}
+		} else {
+			if (bits == 32) {
+				for (unsigned x = 0; x != samples; x++) {
+					buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
+					(void) dsp_get_sample(&qas_write_buffer[1]);
+				}
+			} else {
+				for (unsigned x = 0; x != samples; x++) {
+					buffer.s16[x] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
+					(void) dsp_get_sample(&qas_write_buffer[1]);
+				}
+			}
+		}
+
+		atomic_wakeup();
+		atomic_unlock();
+
+		memcpy(data, buffer.c, buflen);
+
+		data += buflen;
+		totlen += buflen;
+		maxlen -= buflen;
+	}
+	return (totlen);
+}
+
+qint64
+QasAudioIO::writeData(const char *data, qint64 maxlen)
+{
+	static union {
+		int16_t s16[2 * QAS_DSP_SIZE];
+		int32_t s32[2 * QAS_DSP_SIZE];
+		char c[0];
+	} buffer;
+
+	int bits = format.sampleSize();
+	int chns = format.channelCount();
+
+	qint64 totlen = 0;
+
+	while (maxlen > 0) {
+		qint64 buflen = (bits * chns * QAS_DSP_SIZE) / 8;
+		if (buflen > maxlen)
+			buflen = maxlen;
+
+		memcpy(buffer.c, data, buflen);
+
+		unsigned samples = (8 * buflen) / (chns * bits);
+
+		atomic_lock();
+		if (chns == 2) {
+			if (bits == 32) {
+				for (unsigned x = 0; x != samples; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
+					dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
+				}
+			} else {
+				for (unsigned x = 0; x != samples; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s16[2*x+0]);
+					dsp_put_sample(&qas_read_buffer[1], buffer.s16[2*x+1]);
+				}
+			}
+		} else {
+			if (bits == 32) {
+				for (unsigned x = 0; x != samples; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
+					dsp_put_sample(&qas_read_buffer[1], 0);
+				}
+			} else {
+				for (unsigned x = 0; x != samples; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s16[x]);
+					dsp_put_sample(&qas_read_buffer[1], 0);
+				}
+			}
+		}
+		atomic_wakeup();
+		atomic_unlock();
+
+		data += buflen;
+		totlen += buflen;
+		maxlen -= buflen;
+	}
+	return (totlen);
+}
+
+#if defined(__FreeBSD__) || defined(__linux__)
 static void *
 qas_dsp_write_thread(void *)
 {
@@ -530,6 +662,7 @@ qas_dsp_read_thread(void *arg)
 	}
 	return (0);
 }
+#endif
 
 void
 qas_dsp_init()
@@ -542,6 +675,8 @@ qas_dsp_init()
 
 	pthread_create(&td, 0, &qas_dsp_audio_producer, 0);
 	pthread_create(&td, 0, &qas_dsp_audio_analyzer, 0);
+#if defined(__FreeBSD__) || defined(__linux__)
 	pthread_create(&td, 0, &qas_dsp_write_thread, 0);
 	pthread_create(&td, 0, &qas_dsp_read_thread, 0);
+#endif
 }
