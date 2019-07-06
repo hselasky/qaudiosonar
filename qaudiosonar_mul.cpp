@@ -39,7 +39,7 @@
 struct qas_x3_input_double {
 	double	a;
 	double	b;
-} __aligned(16);
+};
 
 /*
  * <input size> = "stride"
