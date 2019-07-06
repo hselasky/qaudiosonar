@@ -20,10 +20,10 @@ LIBS            += -lpthread -lm
 
 macx {
 icons.path	= $${DESTDIR}/Contents/Resources
-icons.files	= MidiPlayerPro.icns
+icons.files	= qaudiosonar.icns
 QMAKE_BUNDLE_DATA += icons
 QMAKE_INFO_PLIST= qaudiosonar_osx.plist
-OTHER_FILES += MidiPlayerPro.entitlements
+OTHER_FILES += qaudiosonar.entitlements
 }
 
 ios {
