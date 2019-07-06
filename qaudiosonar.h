@@ -38,6 +38,7 @@
 #include <sysexits.h>
 #include <signal.h>
 
+#include <sys/ioctl.h>
 #include <sys/filio.h>
 #if defined(__FreeBSD__) || defined(__linux__)
 #include <sys/soundcard.h>
