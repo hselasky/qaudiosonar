@@ -238,8 +238,8 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	gl->addWidget(nl_box_0, 6,0,1,1);
 	gl->addWidget(ml_box_0, 7,0,1,1);
 
-	setWindowTitle(tr("Quick Audio Sonar v1.5"));
-	setWindowIcon(QIcon(":/qaudiosonar.png"));
+	setWindowTitle(tr(QAS_WINDOW_TITLE));
+	setWindowIcon(QIcon(QAS_WINDOW_ICON));
 }
 
 void
@@ -286,8 +286,8 @@ QasView :: QasView(QasMainWindow *_mw)
 
 	gl->addWidget(map_decay_0, 0,0,1,1);
 
-	setWindowTitle(tr("Quick Audio Sonar v1.5"));
-	setWindowIcon(QIcon(":/qaudiosonar.png"));
+	setWindowTitle(tr(QAS_WINDOW_TITLE));
+	setWindowIcon(QIcon(QAS_WINDOW_ICON));
 }
 
 void
@@ -928,8 +928,8 @@ QasMainWindow :: QasMainWindow()
 
 	connect(this, SIGNAL(handle_append_text(const QString)), edit, SLOT(appendPlainText(const QString &)));
 
-	setWindowTitle(tr("Quick Audio Sonar v1.5"));
-	setWindowIcon(QIcon(":/qaudiosonar.png"));
+	setWindowTitle(tr(QAS_WINDOW_TITLE));
+	setWindowIcon(QIcon(QAS_WINDOW_ICON));
 }
 
 void
