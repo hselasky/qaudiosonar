@@ -19,11 +19,63 @@ TARGET          = qaudiosonar
 LIBS            += -lpthread -lm
 
 macx {
-icons.path	= $${DESTDIR}/Contents/Resources
-icons.files	= qaudiosonar.icns
-QMAKE_BUNDLE_DATA += icons
+icons.path= $${DESTDIR}/Contents/Resources
+icons.files= qaudiosonar.icns
+QMAKE_BUNDLE_DATA+= icons
 QMAKE_INFO_PLIST= qaudiosonar_osx.plist
-OTHER_FILES += qaudiosonar.entitlements
+OTHER_FILES+= qaudiosonar.entitlements
+PORTAUDIOPATH= ../portaudio
+
+INCLUDEPATH+= $${PORTAUDIOPATH}/include
+INCLUDEPATH+= $${PORTAUDIOPATH}/src/common
+INCLUDEPATH+= $${PORTAUDIOPATH}/src/os/unix
+
+DEFINES+= PA_LITTLE_ENDIAN
+DEFINES+= PACKAGE_NAME=\\\"\\\"
+DEFINES+= PACKAGE_TARNAME=\\\"\\\"
+DEFINES+= PACKAGE_VERSION=\\\"\\\"
+DEFINES+= PACKAGE_STRING=\\\"\\\"
+DEFINES+= PACKAGE_BUGREPORT=\\\"\\\"
+DEFINES+= PACKAGE_URL=\\\"\\\"
+DEFINES+= STDC_HEADERS=1
+DEFINES+= HAVE_SYS_TYPES_H=1
+DEFINES+= HAVE_SYS_STAT_H=1
+DEFINES+= HAVE_STDLIB_H=1
+DEFINES+= HAVE_STRING_H=1
+DEFINES+= HAVE_MEMORY_H=1
+DEFINES+= HAVE_STRINGS_H=1
+DEFINES+= HAVE_INTTYPES_H=1
+DEFINES+= HAVE_STDINT_H=1
+DEFINES+= HAVE_UNISTD_H=1
+DEFINES+= HAVE_DLFCN_H=1
+DEFINES+= SIZEOF_SHORT=2
+DEFINES+= SIZEOF_INT=4
+DEFINES+= SIZEOF_LONG=8
+DEFINES+= HAVE_CLOCK_GETTIME=1
+DEFINES+= HAVE_NANOSLEEP=1
+DEFINES+= PA_USE_COREAUDIO=1
+
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_debugprint.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_ringbuffer.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_front.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_process.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_allocation.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_dither.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_cpuload.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_stream.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_trace.c
+SOURCES+= $${PORTAUDIOPATH}/src/common/pa_converters.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/skeleton/pa_hostapi_skeleton.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_utilities.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_blocking.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core.c
+SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_hostapis.c
+SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_util.c
+
+LIBS+=  -framework Carbon
+LIBS+=  -framework CoreAudio
+LIBS+=  -framework AudioUnit
+LIBS+=  -framework AudioToolBox
 }
 
 ios {
