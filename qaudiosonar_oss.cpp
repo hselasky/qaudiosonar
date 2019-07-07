@@ -289,10 +289,8 @@ qas_dsp_write_thread(void *)
 		char c[0];
 	} buffer;
 	PaStreamParameters param = {};
-	PaDeviceIndex currdev;
 	PaStream *stream = 0;
 	const PaDeviceInfo *info;
-	int channels;
 	PaError err;
 
 	while (1) {
@@ -304,22 +302,22 @@ qas_dsp_write_thread(void *)
 		usleep(250000);
 
 		atomic_lock();
-		currdev = qas_tx_device;
+		param.device = qas_tx_device;
 		atomic_unlock();
 
-		if (currdev == paNoDevice)
+		if (param.device == paNoDevice)
 			continue;
 
-		info = Pa_GetDeviceInfo(currdev);
+		info = Pa_GetDeviceInfo(param.device);
 		if (info == 0)
 			continue;
 
-		param.channelCount = channels = 2;
+		param.channelCount = 2;
 		param.sampleFormat = paInt32;
 		param.suggestedLatency = info->defaultHighOutputLatency;
 
 		if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
-			param.channelCount = channels = 1;
+			param.channelCount = 1;
 			if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
 				continue;
 			}
@@ -336,7 +334,7 @@ qas_dsp_write_thread(void *)
 				atomic_wakeup();
 				atomic_wait();
 			}
-			if (channels == 2) {
+			if (param.channelCount == 2) {
 				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
 					buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
 					buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
@@ -348,7 +346,7 @@ qas_dsp_write_thread(void *)
 				}
 			}
 			atomic_wakeup();
-			if (currdev != qas_tx_device) {
+			if (param.device != qas_tx_device) {
 				atomic_unlock();
 				break;
 			}
@@ -374,10 +372,8 @@ qas_dsp_read_thread(void *arg)
 		char c[0];
 	} buffer;
 	PaStreamParameters param = {};
-	PaDeviceIndex currdev;
 	PaStream *stream = 0;
 	const PaDeviceInfo *info;
-	int channels;
 	PaError err;
 
 	while (1) {
@@ -389,22 +385,22 @@ qas_dsp_read_thread(void *arg)
 		usleep(250000);
 
 		atomic_lock();
-		currdev = qas_rx_device;
+		param.device = qas_rx_device;
 		atomic_unlock();
 
-		if (currdev == paNoDevice)
+		if (param.device == paNoDevice)
 			continue;
 
-		info = Pa_GetDeviceInfo(currdev);
+		info = Pa_GetDeviceInfo(param.device);
 		if (info == 0)
 			continue;
 
-		param.channelCount = channels = 2;
+		param.channelCount = 2;
 		param.sampleFormat = paInt32;
 		param.suggestedLatency = info->defaultHighInputLatency;
 
 		if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
-			param.channelCount = channels = 1;
+			param.channelCount = 1;
 			if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
 				continue;
 			}
@@ -424,7 +420,7 @@ qas_dsp_read_thread(void *arg)
 				break;
 
 			atomic_lock();
-			if (channels == 2) {
+			if (param.channelCount == 2) {
 				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
 					dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
 					dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
@@ -436,7 +432,7 @@ qas_dsp_read_thread(void *arg)
 				}
 			}
 			atomic_wakeup();
-			if (currdev != qas_rx_device) {
+			if (param.device != qas_rx_device) {
 				atomic_unlock();
 				break;
 			}
