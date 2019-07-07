@@ -840,9 +840,6 @@ QasMainWindow :: QasMainWindow()
 {
 	QPushButton *pb;
 
-	audio_input = new QasAudioIO(this);
-	audio_output = new QasAudioIO(this);
-
 	qc = new QasConfig(this);
 	qv = new QasView(this);
 
@@ -936,83 +933,12 @@ QasMainWindow :: QasMainWindow()
 }
 
 void
-QasAudioIO :: handle_audio_state(QAudio::State state)
-{
-	if (state == QAudio::IdleState) {
-		if (audio_input != 0)
-			audio_input->start(this);
-		if (audio_output != 0)
-			audio_output->start(this);
-	}
-}
-
-bool
-QasAudioIO :: try_format(int channels, int bits, bool isOutput)
-{
-	const union {
-		uint8_t b[4];
-		uint32_t u;
-	} fmt = { .b[0] = 1, .b[1] = 2, .b[2] = 3, .b[3] = 4 };
-
-	const int buflen = (qas_sample_rate * channels * bits) / (8 * 16);
-
-	format.setSampleRate(qas_sample_rate);
-	format.setChannelCount(channels);
-	format.setSampleSize(bits);
-	format.setSampleType(QAudioFormat::SignedInt);
-	format.setByteOrder((fmt.u == 0x1234) ?
-	    QAudioFormat::BigEndian : QAudioFormat::LittleEndian);
-	format.setCodec("audio/pcm");
-
-	if (!format.isValid() || !info.isFormatSupported(format))
-		return (0);
-
-	if (isOutput) {
-		delete audio_output;
-		audio_output = new QAudioOutput(info, format, mw);
-		audio_output->setBufferSize(buflen);
-		connect(audio_output, SIGNAL(stateChanged(QAudio::State)),
-			this, SLOT(handle_audio_state(QAudio::State)));
-		audio_output->start(this);
-	} else {
-		delete audio_input;
-		audio_input = new QAudioInput(info, format, mw);
-		audio_input->setBufferSize(buflen);
-		connect(audio_input, SIGNAL(stateChanged(QAudio::State)),
-			this, SLOT(handle_audio_state(QAudio::State)));
-		audio_input->start(this);
-	}
-	return (1);
-}
-
-void
 QasMainWindow :: handle_apply()
 {
 	QString dsp_rd = led_dsp_read->text().trimmed();
 	QString dsp_wr = led_dsp_write->text().trimmed();
 	QString midi_wr = led_midi_write->text().trimmed();
 	int x;
-
-	audio_input->stop();
-	audio_output->stop();
-
-	if (dsp_rd[0] != '/') {
-		dsp_rd = QString();
-
-		(audio_input->try_format(2, 32, 0) ||
-		 audio_input->try_format(1, 32, 0) ||
-		 audio_input->try_format(2, 16, 0) ||
-		 audio_input->try_format(1, 16, 0));
-	}
-
-	if (dsp_wr[0] != '/') {
-		dsp_wr = QString();
-
-		(audio_output->try_format(2, 32, 1) ||
-		 audio_output->try_format(1, 32, 1) ||
-		 audio_output->try_format(2, 16, 1) ||
-		 audio_output->try_format(1, 16, 1));
-	}
 
 	atomic_lock();
 	for (x = 0; x != dsp_rd.length() &&
@@ -1039,41 +965,11 @@ QasMainWindow :: handle_apply()
 void
 QasMainWindow :: handle_dsp_rx()
 {
-	QList<QAudioDeviceInfo> list = QAudioDeviceInfo::availableDevices(QAudio::AudioInput);
-	int x;
-
-	if (list.size() == 0)
-		return;
-
-	for (x = 0; x != list.size(); x++) {
-		if (QString("%1 #%2").arg(list[x].deviceName()).arg(x) == led_dsp_read->text()) {
-			x++;
-			break;
-		}
-	}
-	x %= list.size();
-	led_dsp_read->setText(QString("%1 #%2").arg(list[x].deviceName()).arg(x));
-	audio_input->info = list[x];
 }
 
 void
 QasMainWindow :: handle_dsp_tx()
 {
-	QList<QAudioDeviceInfo> list = QAudioDeviceInfo::availableDevices(QAudio::AudioOutput);
-	int x;
-
-	if (list.size() == 0)
-		return;
-
-	for (x = 0; x != list.size(); x++) {
-		if (QString("%1 #%2").arg(list[x].deviceName()).arg(x) == led_dsp_write->text()) {
-			x++;
-			break;
-		}
-	}
-	x %= list.size();
-	led_dsp_write->setText(QString("%1 #%2").arg(list[x].deviceName()).arg(x));
-	audio_output->info = list[x];
 }
 
 void

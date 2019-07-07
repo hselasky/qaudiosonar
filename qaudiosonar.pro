@@ -1,6 +1,6 @@
 TEMPLATE        = app
 CONFIG          += qt warn_on release
-QT		+= core gui widgets multimedia
+QT		+= core gui widgets
 HEADERS         += qaudiosonar.h
 HEADERS         += qaudiosonar_button.h
 HEADERS         += qaudiosonar_buttonmap.h

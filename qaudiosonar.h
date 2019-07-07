@@ -60,11 +60,6 @@
 #include <QPlainTextEdit>
 #include <QGroupBox>
 #include <QImage>
-#include <QAudio>
-#include <QAudioDeviceInfo>
-#include <QAudioFormat>
-#include <QAudioInput>
-#include <QAudioOutput>
 
 #define	QAS_SAMPLES_MAX	48000
 #define	QAS_MIDI_BUFSIZE 1024
@@ -229,39 +224,6 @@ public slots:
 	void handle_watchdog();
 };
 
-class QasAudioIO : public QIODevice
-{
-	Q_OBJECT
-public:
-	QasAudioIO(QasMainWindow *_mw) {
-		mw = _mw;
-		audio_input = 0;
-		audio_output = 0;
-		open(QIODevice::ReadWrite);
-	};
-	qint64 readData(char *data, qint64 maxlen) override;
-	qint64 writeData(const char *data, qint64 len) override;
-	bool try_format(int channels, int bits, bool isOutput);
-
-	void stop() {
-		delete audio_input;
-		audio_input = 0;
-		delete audio_output;
-		audio_output = 0;
-	};
-
-	QAudioInput *audio_input;
-	QAudioOutput *audio_output;
-	QAudioDeviceInfo info;
-	QAudioFormat format;
-
-private:
-	QasMainWindow *mw;
-
-public slots:
-	void handle_audio_state(QAudio::State);
-};
-
 class QasMainWindow : public QWidget {
 	Q_OBJECT
 public:
@@ -285,10 +247,6 @@ public:
 	QPushButton *but_dsp_rx;
 	QPushButton *but_dsp_tx;
 	QPushButton *but_midi_tx;
-
-	QasAudioIO *audio_input;
-  	QasAudioIO *audio_output;
-
 signals:
 	void handle_append_text(const QString);
 
