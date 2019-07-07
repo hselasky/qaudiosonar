@@ -96,6 +96,9 @@ QT += androidextras
 QT += gui-private
 }
 
+!macx {
+!android {
+!ios {
 unix {
 INCLUDEPATH+=   $${PREFIX}/include
 LIBDIR+=        $${PREFIX}/lib
@@ -108,6 +111,9 @@ INSTALLS	+= icons
 desktop.path	= $${PREFIX}/share/applications
 desktop.files	= qaudiosonar.desktop
 INSTALLS	+= desktop
+}
+}
+}
 }
 
 target.path	= $${PREFIX}/bin
