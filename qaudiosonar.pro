@@ -22,14 +22,30 @@ isEmpty(PREFIX) {
 PREFIX		= /usr/local
 }
 
+isEmpty(PORTAUDIOPATH) {
+PORTAUDIOPATH= ../portaudio
+}
+
 macx {
 icons.path= $${DESTDIR}/Contents/Resources
 icons.files= qaudiosonar.icns
 QMAKE_BUNDLE_DATA+= icons
 QMAKE_INFO_PLIST= qaudiosonar_osx.plist
 OTHER_FILES+= qaudiosonar.entitlements
-PORTAUDIOPATH= ../portaudio
+HAVE_STATIC_PORTAUDIO=YES
+}
 
+ios {
+icons.path	= $${PREFIX}
+icons.files	= qaudiosonar.png
+QMAKE_BUNDLE_DATA += icons
+QMAKE_INFO_PLIST= qaudiosonar_ios.plist
+QMAKE_APPLE_DEVICE_ARCHS= armv7 arm64
+QMAKE_IOS_DEPLOYMENT_TARGET= 9.2
+HAVE_STATIC_PORTAUDIO=YES
+}
+
+!isEmpty(HAVE_STATIC_PORTAUDIO) {
 INCLUDEPATH+= $${PORTAUDIOPATH}/include
 INCLUDEPATH+= $${PORTAUDIOPATH}/src/common
 INCLUDEPATH+= $${PORTAUDIOPATH}/src/os/unix
@@ -77,15 +93,6 @@ LIBS+=  -framework Carbon
 LIBS+=  -framework CoreAudio
 LIBS+=  -framework AudioUnit
 LIBS+=  -framework AudioToolBox
-}
-
-ios {
-icons.path	= $${PREFIX}
-icons.files	= qaudiosonar.png
-QMAKE_BUNDLE_DATA += icons
-QMAKE_INFO_PLIST= qaudiosonar_ios.plist
-QMAKE_APPLE_DEVICE_ARCHS= armv7 arm64
-QMAKE_IOS_DEPLOYMENT_TARGET= 9.2
 }
 
 android {
