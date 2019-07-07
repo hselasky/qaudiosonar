@@ -229,14 +229,18 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	connect(ml_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
 	connect(nl_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
 
+	bp_close = new QPushButton(tr("Close"));
+	connect(bp_close, SIGNAL(released()), this, SLOT(handle_close()));
+	
 	gl->addWidget(map_source_0, 0,0,1,1);
 	gl->addWidget(map_source_1, 1,0,1,1);
 	gl->addWidget(map_output_0, 2,0,1,1);
 	gl->addWidget(map_output_1, 3,0,1,1);
-	gl->addWidget(bp_box_0, 4,0,1,1);
-	gl->addWidget(bw_box_0, 5,0,1,1);
-	gl->addWidget(nl_box_0, 6,0,1,1);
-	gl->addWidget(ml_box_0, 7,0,1,1);
+	gl->addWidget(bp_box_0, 0,1,1,1);
+	gl->addWidget(bw_box_0, 1,1,1,1);
+	gl->addWidget(nl_box_0, 2,1,1,1);
+	gl->addWidget(ml_box_0, 3,1,1,1);
+	gl->addWidget(bp_close, 4,0,1,2);
 
 	setWindowTitle(tr(QAS_WINDOW_TITLE));
 	setWindowIcon(QIcon(QAS_WINDOW_ICON));
@@ -272,6 +276,12 @@ QasConfig :: handle_output_0(int _value)
 	mw->handle_reset();
 }
 
+void
+QasConfig :: handle_close(void)
+{
+	hide();
+}
+
 QasView :: QasView(QasMainWindow *_mw)
 {
 	mw = _mw;
@@ -284,7 +294,11 @@ QasView :: QasView(QasMainWindow *_mw)
 
 	connect(map_decay_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_decay_0(int)));
 
+	bp_close = new QPushButton(tr("Close"));
+	connect(bp_close, SIGNAL(released()), this, SLOT(handle_close()));
+
 	gl->addWidget(map_decay_0, 0,0,1,1);
+	gl->addWidget(bp_close, 1,0,1,1);
 
 	setWindowTitle(tr(QAS_WINDOW_TITLE));
 	setWindowIcon(QIcon(QAS_WINDOW_ICON));
@@ -299,6 +313,12 @@ QasView :: handle_decay_0(int _value)
 	else
 		qas_view_decay = 1.0 - 1.0 / pow(2.0, _value + 2);
 	atomic_graph_unlock();
+}
+
+void
+QasView :: handle_close(void)
+{
+	hide();
 }
 
 static void

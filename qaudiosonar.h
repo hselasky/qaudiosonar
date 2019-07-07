@@ -163,6 +163,7 @@ public:
 	QasBandWidthBox *bw_box_0;
 	QasMidilevelBox *ml_box_0;
 	QasNoiselevelBox *nl_box_0;
+	QPushButton *bp_close;
 
 public slots:
 	void handle_source_0(int);
@@ -170,6 +171,7 @@ public slots:
 	void handle_output_0(int);
 	void handle_output_1(int);
 	void handle_filter_0(int);
+	void handle_close(void);
 };
 
 class QasView : public QWidget {
@@ -183,9 +185,11 @@ public:
 	QGridLayout *gl;
 
 	QasButtonMap *map_decay_0;
+	QPushButton *bp_close;
 
 public slots:
 	void handle_decay_0(int);
+	void handle_close();
 };
 
 class QasBand : public QWidget {
