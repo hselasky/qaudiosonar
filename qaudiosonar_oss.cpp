@@ -25,7 +25,7 @@
 
 #include "qaudiosonar.h"
 
-int	qas_sample_rate = 8000;
+int	qas_sample_rate = 16000;
 int	qas_source_0;
 int	qas_source_1;
 int	qas_output_0;
