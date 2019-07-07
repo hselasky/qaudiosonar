@@ -32,8 +32,8 @@ int	qas_output_0;
 int	qas_output_1;
 int	qas_freeze;
 int	qas_record;
-char dsp_read_device[1024];
-char dsp_write_device[1024];
+PaDeviceIndex qas_rx_device = paNoDevice;
+PaDeviceIndex qas_tx_device = paNoDevice;
 double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_midi_level = 1LL << 62;
 double qas_noise_level = 1.0;
@@ -281,87 +281,55 @@ qas_dsp_audio_analyzer(void *arg)
 	return (0);
 }
 
-#if defined(__FreeBSD__) || defined(__linux__)
 static void *
 qas_dsp_write_thread(void *)
 {
 	static union {
-		int16_t s16[2 * QAS_DSP_SIZE];
 		int32_t s32[2 * QAS_DSP_SIZE];
+		char c[0];
 	} buffer;
-	static char fname[1024];
-	int f = -1;
-	int err;
-	int temp;
+	PaStreamParameters param = {};
+	PaDeviceIndex currdev;
+	PaStream *stream = 0;
+	const PaDeviceInfo *info;
 	int channels;
-	int buflen;
-	int afmt;
+	PaError err;
 
 	while (1) {
-		if (f > -1) {
-			close(f);
-			f = -1;
+		if (stream != 0) {
+			Pa_CloseStream(stream);
+			stream = 0;
 		}
 
 		usleep(250000);
 
 		atomic_lock();
-		strlcpy(fname, dsp_write_device, sizeof(fname));
+		currdev = qas_tx_device;
 		atomic_unlock();
 
-		if (fname[0] == 0)
+		if (currdev == paNoDevice)
 			continue;
 
-		f = open(fname, O_WRONLY | O_NONBLOCK);
-		if (f < 0)
+		info = Pa_GetDeviceInfo(currdev);
+		if (info == 0)
 			continue;
 
-		temp = 0;
-		err = ioctl(f, FIONBIO, &temp);
-		if (err)
-			continue;
-
-		afmt = AFMT_S32_NE;
-		err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
-		if (err) {
-			afmt = AFMT_S16_NE;
-			err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
-			if (err)
-				continue;
-		}
-		
-		channels = 2;
-		err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
-		if (err) {
+		if (info->maxOutputChannels >= 2) {
+			channels = 2;
+		} else {
 			channels = 1;
-			err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
-			if (err)
-				continue;
 		}
 
-		temp = qas_sample_rate;
-		err = ioctl(f, SNDCTL_DSP_SPEED, &temp);
-		if (err || temp != qas_sample_rate)
+		param.channelCount = channels;
+		param.sampleFormat = paInt32;
+		param.suggestedLatency = info->defaultHighOutputLatency;
+
+		if (Pa_OpenStream(&stream, NULL, &param,
+		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
 			continue;
 
-		temp = 0;
-		while ((1U << temp) < QAS_DSP_SIZE)
-			temp++;
-
-		temp |= (2 << 16);
-		if (channels == 2)
-			temp += 2;
-		else
-			temp += 1;
-
-		err = ioctl(f, SNDCTL_DSP_SETFRAGMENT, &temp);
-		if (err)
+		if (Pa_StartStream(stream) != paNoError)
 			continue;
-
-		/* compute buffer length */
-		buflen = (channels == 1 ?
-		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) / 2 : sizeof(buffer.s16) / 2) :
-		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) : sizeof(buffer.s16)));
 
 		while (1) {
 			atomic_lock();
@@ -371,38 +339,25 @@ qas_dsp_write_thread(void *)
 				atomic_wait();
 			}
 			if (channels == 2) {
-				if (afmt == AFMT_S32_NE) {
-					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-						buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
-						buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
-					}
-				} else {
-					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-						buffer.s16[2*x+0] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
-						buffer.s16[2*x+1] = dsp_get_sample(&qas_write_buffer[1]) / 65536.0;
-					}
+				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+					buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
+					buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
 				}
 			} else {
-				if (afmt == AFMT_S32_NE) {
-					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-						buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
-						(void) dsp_get_sample(&qas_write_buffer[1]);
-					}
-				} else {
-					for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
-						buffer.s16[x] = dsp_get_sample(&qas_write_buffer[0]) / 65536.0;
-						(void) dsp_get_sample(&qas_write_buffer[1]);
-					}
+				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+					buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
+					(void) dsp_get_sample(&qas_write_buffer[1]);
 				}
 			}
 			atomic_wakeup();
-			if (strcmp(fname, dsp_write_device)) {
+			if (currdev != qas_tx_device) {
 				atomic_unlock();
 				break;
 			}
 			atomic_unlock();
-			err = write(f, &buffer, buflen);
-			if (err != buflen)
+
+			err = Pa_WriteStream(stream, buffer.c, QAS_DSP_SIZE);
+			if (err != paNoError && err != paOutputUnderflowed)
 				break;
 		}
 	}
@@ -413,116 +368,71 @@ static void *
 qas_dsp_read_thread(void *arg)
 {
 	static union {
-		int16_t s16[2 * QAS_DSP_SIZE];
 		int32_t s32[2 * QAS_DSP_SIZE];
+		char c[0];
 	} buffer;
-	static char fname[1024];
-	int f = -1;
-	int err;
-	int temp;
+	PaStreamParameters param = {};
+	PaDeviceIndex currdev;
+	PaStream *stream = 0;
+	const PaDeviceInfo *info;
 	int channels;
-	int buflen;
-	int afmt;
+	PaError err;
 
 	while (1) {
-		if (f > -1) {
-			close(f);
-			f = -1;
+		if (stream != 0) {
+			Pa_CloseStream(stream);
+			stream = 0;
 		}
 	  
 		usleep(250000);
 
 		atomic_lock();
-		strlcpy(fname, dsp_read_device, sizeof(fname));
+		currdev = qas_rx_device;
 		atomic_unlock();
 
-		if (fname[0] == 0)
+		if (currdev == paNoDevice)
 			continue;
 
-		f = open(fname, O_RDONLY | O_NONBLOCK);
-		if (f < 0)
+		info = Pa_GetDeviceInfo(currdev);
+		if (info == 0)
 			continue;
 
-		temp = 0;
-		err = ioctl(f, FIONBIO, &temp);
-		if (err)
-			continue;
-
-		afmt = AFMT_S32_NE;
-		err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
-		if (err) {
-			afmt = AFMT_S16_NE;
-			err = ioctl(f, SNDCTL_DSP_SETFMT, &afmt);
-			if (err)
-				continue;
-		}
-
-		channels = 2;
-		err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
-		if (err) {
+		if (info->maxInputChannels >= 2) {
+			channels = 2;
+		} else {
 			channels = 1;
-			err = ioctl(f, SOUND_PCM_WRITE_CHANNELS, &channels);
-			if (err)
-				continue;
 		}
 
-		temp = qas_sample_rate;
-		err = ioctl(f, SNDCTL_DSP_SPEED, &temp);
-		if (err || temp != qas_sample_rate)
+		param.channelCount = channels;
+		param.sampleFormat = paInt32;
+		param.suggestedLatency = info->defaultHighInputLatency;
+
+		if (Pa_OpenStream(&stream, &param, NULL,
+				  qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
 			continue;
 
-		temp = 0;
-		while ((1U << temp) < QAS_DSP_SIZE)
-			temp++;
-
-		temp |= (2 << 16);
-		if (channels == 2)
-			temp += 2;
-		else
-			temp += 1;
-
-		err = ioctl(f, SNDCTL_DSP_SETFRAGMENT, &temp);
-		if (err)
+		if (Pa_StartStream(stream) != paNoError)
 			continue;
-
-		/* compute buffer length */
-		buflen = (channels == 1 ?
-		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) / 2 : sizeof(buffer.s16) / 2) :
-		    (afmt == AFMT_S32_NE ? sizeof(buffer.s32) : sizeof(buffer.s16)));
 
 		while (1) {
-			err = read(f, &buffer, buflen);
-			if (err != buflen)
+			err = Pa_ReadStream(stream, buffer.c, QAS_DSP_SIZE);
+			if (err != paNoError && err != paInputOverflowed)
 				break;
 
 			atomic_lock();
 			if (channels == 2) {
-				if (afmt == AFMT_S32_NE) {
-					for (int x = 0; x != (err / 8); x++) {
-						dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
-						dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
-					}
-				} else {
-					for (int x = 0; x != (err / 4); x++) {
-						dsp_put_sample(&qas_read_buffer[0], buffer.s16[2*x+0]);
-						dsp_put_sample(&qas_read_buffer[1], buffer.s16[2*x+1]);
-					}
+				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
+					dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
 				}
 			} else {
-				if (afmt == AFMT_S32_NE) {
-					for (int x = 0; x != (err / 4); x++) {
-						dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
-						dsp_put_sample(&qas_read_buffer[1], 0);
-					}
-				} else {
-					for (int x = 0; x != (err / 2); x++) {
-						dsp_put_sample(&qas_read_buffer[0], buffer.s16[x]);
-						dsp_put_sample(&qas_read_buffer[1], 0);
-					}
+				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+					dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
+					dsp_put_sample(&qas_read_buffer[1], 0);
 				}
 			}
 			atomic_wakeup();
-			if (strcmp(fname, dsp_read_device)) {
+			if (currdev != qas_rx_device) {
 				atomic_unlock();
 				break;
 			}
@@ -531,7 +441,6 @@ qas_dsp_read_thread(void *arg)
 	}
 	return (0);
 }
-#endif
 
 void
 qas_dsp_init()
@@ -544,8 +453,6 @@ qas_dsp_init()
 
 	pthread_create(&td, 0, &qas_dsp_audio_producer, 0);
 	pthread_create(&td, 0, &qas_dsp_audio_analyzer, 0);
-#if defined(__FreeBSD__) || defined(__linux__)
 	pthread_create(&td, 0, &qas_dsp_write_thread, 0);
 	pthread_create(&td, 0, &qas_dsp_read_thread, 0);
-#endif
 }

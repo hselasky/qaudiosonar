@@ -840,6 +840,8 @@ QasMainWindow :: QasMainWindow()
 {
 	QPushButton *pb;
 
+	pa_max_index = Pa_GetDeviceCount();
+
 	qc = new QasConfig(this);
 	qv = new QasView(this);
 
@@ -864,14 +866,14 @@ QasMainWindow :: QasMainWindow()
 	connect(but_dsp_rx, SIGNAL(released()), this, SLOT(handle_dsp_rx()));
 	gl->addWidget(but_dsp_rx, 0,0,1,1);
 
-	led_dsp_read = new QLineEdit("/dev/dsp");
+	led_dsp_read = new QLineEdit(paName(Pa_GetDefaultInputDevice()));
 	gl->addWidget(led_dsp_read, 0,1,1,1);
 
 	but_dsp_tx = new QPushButton(tr("DSP TX"));
 	connect(but_dsp_tx, SIGNAL(released()), this, SLOT(handle_dsp_tx()));
 	gl->addWidget(but_dsp_tx, 1,0,1,1);
 
-	led_dsp_write = new QLineEdit("/dev/dsp");
+	led_dsp_write = new QLineEdit(paName(Pa_GetDefaultOutputDevice()));
 	gl->addWidget(led_dsp_write, 1,1,1,1);
 
 	but_midi_tx = new QPushButton(tr("MIDI TX"));
@@ -935,28 +937,33 @@ QasMainWindow :: QasMainWindow()
 void
 QasMainWindow :: handle_apply()
 {
-	QString dsp_rd = led_dsp_read->text().trimmed();
-	QString dsp_wr = led_dsp_write->text().trimmed();
 	QString midi_wr = led_midi_write->text().trimmed();
+	QString dsp_rx = led_dsp_read->text().trimmed();
+	QString dsp_tx = led_dsp_write->text().trimmed();
+	PaDeviceIndex i;
 	int x;
 
 	atomic_lock();
-	for (x = 0; x != dsp_rd.length() &&
-	       x != sizeof(dsp_read_device) - 1; x++) {
-		dsp_read_device[x] = dsp_rd[x].toLatin1();
+	qas_rx_device = paNoDevice;
+	for (i = 0; i != pa_max_index; i++) {
+		if (dsp_rx == paName(i)) {
+			qas_rx_device = i;
+			break;
+		}
 	}
-	dsp_read_device[x] = 0;
-
-	for (x = 0; x != dsp_wr.length() &&
-	       x != sizeof(dsp_write_device) - 1; x++) {
-		dsp_write_device[x] = dsp_wr[x].toLatin1();
+	qas_tx_device = paNoDevice;
+	for (i = 0; i != pa_max_index; i++) {
+		if (dsp_tx == paName(i)) {
+			qas_tx_device = i;
+			break;
+		}
 	}
-	dsp_write_device[x] = 0;
 
 	for (x = 0; x != midi_wr.length() &&
 	       x != sizeof(midi_write_device) - 1; x++) {
 		midi_write_device[x] = midi_wr[x].toLatin1();
 	}
+
 	midi_write_device[x] = 0;
 	atomic_wakeup();
 	atomic_unlock();
@@ -965,11 +972,35 @@ QasMainWindow :: handle_apply()
 void
 QasMainWindow :: handle_dsp_rx()
 {
+	PaDeviceIndex i;
+
+	if (pa_max_index <= 0)
+		return;
+	for (i = 0; i != pa_max_index; i++) {
+		if (led_dsp_read->text() == paName(i)) {
+			i++;
+			break;
+		}
+	}
+	i %= pa_max_index;
+	led_dsp_read->setText(paName(i));
 }
 
 void
 QasMainWindow :: handle_dsp_tx()
 {
+	PaDeviceIndex i;
+
+	if (pa_max_index <= 0)
+		return;
+	for (i = 0; i != pa_max_index; i++) {
+		if (led_dsp_write->text() == paName(i)) {
+			i++;
+			break;
+		}
+	}
+	i %= pa_max_index;
+	led_dsp_write->setText(paName(i));
 }
 
 void
@@ -1076,6 +1107,9 @@ main(int argc, char **argv)
 	qas_window_size = qas_sample_rate - (qas_sample_rate % QAS_CORR_SIZE);
 	if (qas_window_size == 0)
 		errx(EX_USAGE, "Invalid window size\n");
+
+	if (Pa_Initialize() != paNoError)
+		errx(EX_SOFTWARE, "Could not setup portaudio\n");
 
 	qas_wave_init();
 	qas_corr_init();

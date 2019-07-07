@@ -18,6 +18,10 @@ RESOURCES	+= qaudiosonar.qrc
 TARGET          = qaudiosonar
 LIBS            += -lpthread -lm
 
+isEmpty(PREFIX) {
+PREFIX		= /usr/local
+}
+
 macx {
 icons.path= $${DESTDIR}/Contents/Resources
 icons.files= qaudiosonar.icns
@@ -93,17 +97,17 @@ QT += gui-private
 }
 
 unix {
-  icons.path	= $${PREFIX}/share/pixmaps
-  icons.files	= qaudiosonar.png
-  INSTALLS	+= icons
+INCLUDEPATH+=   $${PREFIX}/include
+LIBDIR+=        $${PREFIX}/lib
+LIBS+=          -lportaudio
 
-  desktop.path	= $${PREFIX}/share/applications
-  desktop.files	= qaudiosonar.desktop
-  INSTALLS	+= desktop
-}
+icons.path	= $${PREFIX}/share/pixmaps
+icons.files	= qaudiosonar.png
+INSTALLS	+= icons
 
-isEmpty(PREFIX) {
-PREFIX		= /usr/local
+desktop.path	= $${PREFIX}/share/applications
+desktop.files	= qaudiosonar.desktop
+INSTALLS	+= desktop
 }
 
 target.path	= $${PREFIX}/bin

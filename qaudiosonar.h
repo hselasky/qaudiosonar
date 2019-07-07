@@ -40,10 +40,9 @@
 
 #include <sys/ioctl.h>
 #include <sys/filio.h>
-#if defined(__FreeBSD__) || defined(__linux__)
-#include <sys/soundcard.h>
-#endif
 #include <sys/queue.h>
+
+#include <portaudio.h>
 
 #include <QApplication>
 #include <QPushButton>
@@ -61,7 +60,7 @@
 #include <QGroupBox>
 #include <QImage>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.5"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.6"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
 #define	QAS_SAMPLES_MAX	48000
@@ -233,6 +232,10 @@ public:
 	QasMainWindow();
 	~QasMainWindow() { };
 
+	QString paName(PaDeviceIndex index) {
+		return QString("PortAudio #%1").arg(index);
+	};
+
 	QasConfig *qc;
 	QasView *qv;
 	QGridLayout *gl;
@@ -250,6 +253,8 @@ public:
 	QPushButton *but_dsp_rx;
 	QPushButton *but_dsp_tx;
 	QPushButton *but_midi_tx;
+
+	PaDeviceIndex pa_max_index;
 signals:
 	void handle_append_text(const QString);
 
@@ -390,8 +395,8 @@ struct dsp_buffer {
 	unsigned out_off;
 };
 
-extern char dsp_read_device[1024];
-extern char dsp_write_device[1024];
+extern PaDeviceIndex qas_rx_device;
+extern PaDeviceIndex qas_tx_device;
 extern double qas_band_pass_filter[QAS_CORR_SIZE];
 
 extern void qas_dsp_init();
