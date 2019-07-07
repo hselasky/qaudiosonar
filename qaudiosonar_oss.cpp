@@ -328,9 +328,6 @@ qas_dsp_write_thread(void *)
 		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
 			continue;
 
-		if (Pa_StartStream(stream) != paNoError)
-			continue;
-
 		while (1) {
 			atomic_lock();
 			while (dsp_read_space(&qas_write_buffer[0]) < QAS_DSP_SIZE ||
@@ -355,6 +352,10 @@ qas_dsp_write_thread(void *)
 				break;
 			}
 			atomic_unlock();
+
+			if (Pa_IsStreamStopped(stream) &&
+			    Pa_StartStream(stream) != paNoError)
+				break;
 
 			err = Pa_WriteStream(stream, buffer.c, QAS_DSP_SIZE);
 			if (err != paNoError && err != paOutputUnderflowed)
@@ -408,13 +409,14 @@ qas_dsp_read_thread(void *arg)
 		param.suggestedLatency = info->defaultHighInputLatency;
 
 		if (Pa_OpenStream(&stream, &param, NULL,
-				  qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
-			continue;
-
-		if (Pa_StartStream(stream) != paNoError)
+		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
 			continue;
 
 		while (1) {
+			if (Pa_IsStreamStopped(stream) &&
+			    Pa_StartStream(stream) != paNoError)
+				break;
+
 			err = Pa_ReadStream(stream, buffer.c, QAS_DSP_SIZE);
 			if (err != paNoError && err != paInputOverflowed)
 				break;
