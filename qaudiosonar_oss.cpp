@@ -314,15 +314,16 @@ qas_dsp_write_thread(void *)
 		if (info == 0)
 			continue;
 
-		if (info->maxOutputChannels >= 2) {
-			channels = 2;
-		} else {
-			channels = 1;
-		}
-
-		param.channelCount = channels;
+		param.channelCount = channels = 2;
 		param.sampleFormat = paInt32;
 		param.suggestedLatency = info->defaultHighOutputLatency;
+
+		if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
+			param.channelCount = channels = 1;
+			if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
+				continue;
+			}
+		}
 
 		if (Pa_OpenStream(&stream, NULL, &param,
 		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
@@ -398,15 +399,16 @@ qas_dsp_read_thread(void *arg)
 		if (info == 0)
 			continue;
 
-		if (info->maxInputChannels >= 2) {
-			channels = 2;
-		} else {
-			channels = 1;
-		}
-
-		param.channelCount = channels;
+		param.channelCount = channels = 2;
 		param.sampleFormat = paInt32;
 		param.suggestedLatency = info->defaultHighInputLatency;
+
+		if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
+			param.channelCount = channels = 1;
+			if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
+				continue;
+			}
+		}
 
 		if (Pa_OpenStream(&stream, &param, NULL,
 		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
