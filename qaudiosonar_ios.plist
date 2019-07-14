@@ -11,9 +11,15 @@
 	<key>CFBundleIconFile</key>
 	<string>qaudiosonar_ios.png</string>
 	<key>CFBundleIcons</key>
-	<dict/>
-	<key>CFBundleIcons~ipad</key>
-	<dict/>
+	<dict>
+	  <key>CFBundlePrimaryIcon</key>
+	  <dict>
+            <key>CFBundleIconFiles</key>
+            <array>
+              <string>qaudiosonar_ios.png</string>
+            </array>
+	  </dict>
+	</dict>
 	<key>CFBundleIdentifier</key>
 	<string>org.selasky.qaudiosonar</string>
 	<key>CFBundleName</key>
