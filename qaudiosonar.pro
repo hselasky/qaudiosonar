@@ -89,7 +89,6 @@ SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core.c
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_hostapis.c
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_util.c
 
-LIBS+=  -framework Carbon
 LIBS+=  -framework CoreAudio
 LIBS+=  -framework AudioUnit
 LIBS+=  -framework AudioToolBox
