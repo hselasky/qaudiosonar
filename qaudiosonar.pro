@@ -90,7 +90,6 @@ SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_hostapis.c
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_util.c
 
 LIBS+=  -framework CoreAudio
-LIBS+=  -framework AudioUnit
 LIBS+=  -framework AudioToolBox
 }
 
