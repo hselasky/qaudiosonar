@@ -25,6 +25,7 @@
 
 #include "qaudiosonar.h"
 
+#define	QAS_LAT 0.016 /* seconds */
 int	qas_sample_rate = 16000;
 int	qas_source_0;
 int	qas_source_1;
@@ -288,10 +289,14 @@ qas_dsp_write_thread(void *)
 		int32_t s32[2 * QAS_DSP_SIZE];
 		char c[0];
 	} buffer;
+	size_t qas_tx_size = qas_sample_rate * QAS_LAT;
 	PaStreamParameters param = {};
 	PaStream *stream = 0;
 	const PaDeviceInfo *info;
 	PaError err;
+
+	if (qas_tx_size > QAS_DSP_SIZE)
+		qas_tx_size = QAS_DSP_SIZE;
 
 	while (1) {
 		if (stream != 0) {
@@ -314,7 +319,7 @@ qas_dsp_write_thread(void *)
 
 		param.channelCount = 2;
 		param.sampleFormat = paInt32;
-		param.suggestedLatency = info->defaultHighOutputLatency;
+		param.suggestedLatency = QAS_LAT;
 
 		if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
 			param.channelCount = 1;
@@ -329,18 +334,18 @@ qas_dsp_write_thread(void *)
 
 		while (1) {
 			atomic_lock();
-			while (dsp_read_space(&qas_write_buffer[0]) < QAS_DSP_SIZE ||
-			       dsp_read_space(&qas_write_buffer[1]) < QAS_DSP_SIZE) {
+			while (dsp_read_space(&qas_write_buffer[0]) < qas_tx_size ||
+			       dsp_read_space(&qas_write_buffer[1]) < qas_tx_size) {
 				atomic_wakeup();
 				atomic_wait();
 			}
 			if (param.channelCount == 2) {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+				for (unsigned x = 0; x != qas_tx_size; x++) {
 					buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
 					buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
 				}
 			} else {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+				for (unsigned x = 0; x != qas_tx_size; x++) {
 					buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
 					(void) dsp_get_sample(&qas_write_buffer[1]);
 				}
@@ -356,7 +361,7 @@ qas_dsp_write_thread(void *)
 			    Pa_StartStream(stream) != paNoError)
 				break;
 
-			err = Pa_WriteStream(stream, buffer.c, QAS_DSP_SIZE);
+			err = Pa_WriteStream(stream, buffer.c, qas_tx_size);
 			if (err != paNoError && err != paOutputUnderflowed)
 				break;
 		}
@@ -371,10 +376,14 @@ qas_dsp_read_thread(void *arg)
 		int32_t s32[2 * QAS_DSP_SIZE];
 		char c[0];
 	} buffer;
+	size_t qas_rx_size = qas_sample_rate * QAS_LAT;
 	PaStreamParameters param = {};
 	PaStream *stream = 0;
 	const PaDeviceInfo *info;
 	PaError err;
+
+	if (qas_rx_size > QAS_DSP_SIZE)
+		qas_rx_size = QAS_DSP_SIZE;
 
 	while (1) {
 		if (stream != 0) {
@@ -397,7 +406,7 @@ qas_dsp_read_thread(void *arg)
 
 		param.channelCount = 2;
 		param.sampleFormat = paInt32;
-		param.suggestedLatency = info->defaultHighInputLatency;
+		param.suggestedLatency = QAS_LAT;
 
 		if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
 			param.channelCount = 1;
@@ -415,18 +424,18 @@ qas_dsp_read_thread(void *arg)
 			    Pa_StartStream(stream) != paNoError)
 				break;
 
-			err = Pa_ReadStream(stream, buffer.c, QAS_DSP_SIZE);
+			err = Pa_ReadStream(stream, buffer.c, qas_rx_size);
 			if (err != paNoError && err != paInputOverflowed)
 				break;
 
 			atomic_lock();
 			if (param.channelCount == 2) {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+				for (unsigned x = 0; x != qas_rx_size; x++) {
 					dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
 					dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
 				}
 			} else {
-				for (unsigned x = 0; x != QAS_DSP_SIZE; x++) {
+				for (unsigned x = 0; x != qas_rx_size; x++) {
 					dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
 					dsp_put_sample(&qas_read_buffer[1], 0);
 				}
