@@ -37,7 +37,7 @@ HAVE_STATIC_PORTAUDIO=YES
 
 ios {
 icons.path	= $${PREFIX}
-icons.files	= qaudiosonar.png
+icons.files	= qaudiosonar_144x144.png qaudiosonar_152x152.png qaudiosonar_72x72.png qaudiosonar_76x76.png
 QMAKE_BUNDLE_DATA += icons
 QMAKE_INFO_PLIST= qaudiosonar_ios.plist
 QMAKE_APPLE_DEVICE_ARCHS= armv7 arm64
