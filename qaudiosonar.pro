@@ -83,9 +83,16 @@ SOURCES+= $${PORTAUDIOPATH}/src/common/pa_stream.c
 SOURCES+= $${PORTAUDIOPATH}/src/common/pa_trace.c
 SOURCES+= $${PORTAUDIOPATH}/src/common/pa_converters.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/skeleton/pa_hostapi_skeleton.c
+macx {
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_utilities.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_blocking.c
+SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core.c
+}
+ios {
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core_utilities.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core_blocking.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core.c
+}
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_hostapis.c
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_util.c
 
