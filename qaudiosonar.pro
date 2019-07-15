@@ -70,7 +70,6 @@ DEFINES+= HAVE_UNISTD_H=1
 DEFINES+= HAVE_DLFCN_H=1
 DEFINES+= HAVE_CLOCK_GETTIME=1
 DEFINES+= HAVE_NANOSLEEP=1
-DEFINES+= PA_USE_COREAUDIO_IOS=1
 
 SOURCES+= $${PORTAUDIOPATH}/src/common/pa_debugprint.c
 SOURCES+= $${PORTAUDIOPATH}/src/common/pa_ringbuffer.c
@@ -87,11 +86,15 @@ macx {
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_utilities.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core_blocking.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio/pa_mac_core.c
+DEFINES+= PA_USE_COREAUDIO=1
+LIBS+=  -framework Carbon
+LIBS+=  -framework AudioUnit
 }
 ios {
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core_utilities.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core_blocking.c
 SOURCES+= $${PORTAUDIOPATH}/src/hostapi/coreaudio_ios/pa_ios_core.c
+DEFINES+= PA_USE_COREAUDIO_IOS=1
 }
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_hostapis.c
 SOURCES+= $${PORTAUDIOPATH}/src/os/unix/pa_unix_util.c
