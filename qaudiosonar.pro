@@ -15,7 +15,13 @@ SOURCES         += qaudiosonar_correlation.cpp
 SOURCES         += qaudiosonar_display.cpp
 SOURCES         += qaudiosonar_wave.cpp
 RESOURCES	+= qaudiosonar.qrc
+
+macx {
+TARGET          = QuickAudioSonar
+} else {
 TARGET          = qaudiosonar
+}
+
 LIBS            += -lpthread -lm
 
 isEmpty(PREFIX) {
