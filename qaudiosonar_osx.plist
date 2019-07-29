@@ -28,5 +28,7 @@
 	<string>NSApplication</string>
 	<key>NSRequiresAquaSystemAppearance</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Quick Audio Sonar wants to access the microphone.</string>
 </dict>
 </plist>
