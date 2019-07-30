@@ -29,6 +29,6 @@
 	<key>NSRequiresAquaSystemAppearance</key>
 	<true/>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>Quick Audio Sonar wants to access the microphone.</string>
+	<string>Quick Audio Sonar analyzes audio and needs access to an audio input device in order to function properly.</string>
 </dict>
 </plist>
