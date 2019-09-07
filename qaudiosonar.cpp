@@ -201,15 +201,14 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	gl = new QGridLayout(this);
 
 	map_source_0 = new QasButtonMap("Main input channel\0"
-					"INPUT-0\0" "INPUT-1\0"
-					"OUTPUT-0\0" "OUTPUT-1\0", 4, 4);
+					"INPUT 0\0" "INPUT 1\0" "INPUT 0+1\0"
+					"OUTPUT 0\0" "OUTPUT 1\0" "OUTPUT 0+1\0", 6, 3);
 	map_source_1 = new QasButtonMap("Correlation input channel\0"
-					"INPUT-0\0" "INPUT-1\0"
-					"OUTPUT-0\0" "OUTPUT-1\0", 4, 4);
+					"INPUT 0\0" "INPUT 1\0" "INPUT 0+1\0"
+					"OUTPUT 0\0" "OUTPUT 1\0" "OUTPUT 0+1\0", 6, 3);
 	map_output_0 = new QasButtonMap("Output for channel 0\0"
 					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
 					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
-
 	map_output_1 = new QasButtonMap("Output for channel 1\0"
 					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
 					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);

@@ -224,7 +224,7 @@ qas_dsp_audio_analyzer(void *arg)
 {
 	double *dsp_rd_audio;
 	double *dsp_rd_monitor;
-	static double dsp_rd_data[4][QAS_CORR_SIZE];
+	static double dsp_rd_data[6][QAS_CORR_SIZE];
 
 	while (1) {
 		atomic_lock();
@@ -239,8 +239,10 @@ qas_dsp_audio_analyzer(void *arg)
 			for (unsigned x = 0; x != QAS_CORR_SIZE; x++) {
 				dsp_rd_data[0][x] = dsp_get_sample(&qas_read_buffer[0]);
 				dsp_rd_data[1][x] = dsp_get_sample(&qas_read_buffer[1]);
-				dsp_rd_data[2][x] = dsp_get_monitor_sample(&qas_write_buffer[0]);
-				dsp_rd_data[3][x] = dsp_get_monitor_sample(&qas_write_buffer[1]);
+				dsp_rd_data[2][x] = dsp_rd_data[0][x] + dsp_rd_data[1][x];
+				dsp_rd_data[3][x] = dsp_get_monitor_sample(&qas_write_buffer[0]);
+				dsp_rd_data[4][x] = dsp_get_monitor_sample(&qas_write_buffer[1]);
+				dsp_rd_data[5][x] = dsp_rd_data[3][x] + dsp_rd_data[4][x];
 			}
 			atomic_wakeup();
 		} while (qas_freeze);
