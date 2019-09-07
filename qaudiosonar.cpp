@@ -104,7 +104,7 @@ QasGetSequenceNumber(size_t *phi)
 
 QasBandPassBox :: QasBandPassBox()
 {
-	setTitle("Band pass center frequency: 1 Hz");
+	setTitle(QString("Band pass center frequency: %1 Hz").arg(qas_sample_rate / 4));
 
 	grid = new QGridLayout(this);
 
@@ -112,7 +112,7 @@ QasBandPassBox :: QasBandPassBox()
 
 	pSB->setRange(1, qas_sample_rate / 2);
 	pSB->setSingleStep(1);
-	pSB->setValue(1);
+	pSB->setValue(qas_sample_rate / 4);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
 
 	grid->addWidget(pSB, 0,0,1,1);
