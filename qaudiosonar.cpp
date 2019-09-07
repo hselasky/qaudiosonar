@@ -251,8 +251,6 @@ QasConfig :: handle_source_0(int _value)
 	atomic_lock();
 	qas_source_0 = _value;
 	atomic_unlock();
-
-	mw->handle_reset();
 }
 
 void
@@ -261,8 +259,6 @@ QasConfig :: handle_source_1(int _value)
 	atomic_lock();
 	qas_source_1 = _value;
 	atomic_unlock();
-
-	mw->handle_reset();
 }
 
 void
@@ -271,8 +267,6 @@ QasConfig :: handle_output_0(int _value)
 	atomic_lock();
 	qas_output_0 = _value;
 	atomic_unlock();
-
-	mw->handle_reset();
 }
 
 void
@@ -386,8 +380,6 @@ QasConfig :: handle_output_1(int _value)
 	atomic_lock();
 	qas_output_1 = _value;
 	atomic_unlock();
-
-	mw->handle_reset();
 }
 
 QasBand :: QasBand(QasMainWindow *_mw)
