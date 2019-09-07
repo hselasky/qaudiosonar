@@ -784,7 +784,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	QString str;
 	str = QString("MAX=%1dB@%2samples;%3ms;%4m    LAG=%5F")
-	    .arg(0.5 * 10.0 * log(corr_max_power) / log(10)).arg(corr_max_off)
+	   .arg(10.0 * log(corr_max_power) / log(10)).arg(corr_max_off)
 	   .arg((double)((int)((corr_max_off * 100000ULL) / qas_sample_rate) / 100.0))
 	   .arg((double)((int)((corr_max_off * 34000ULL) / qas_sample_rate) / 100.0))
 	   .arg(qas_display_lag());
