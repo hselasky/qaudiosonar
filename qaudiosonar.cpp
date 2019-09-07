@@ -173,15 +173,15 @@ QasMidilevelBox :: handle_value_changed(int value)
 
 QasNoiselevelBox :: QasNoiselevelBox()
 {
-	setTitle(QString("Noise level: %1").arg(0));
+	setTitle(QString("Noise level: %1").arg(-64));
 
 	grid = new QGridLayout(this);
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(-16, 16);
+	pSB->setRange(-256, 256);
 	pSB->setSingleStep(1);
-	pSB->setValue(0);
+	pSB->setValue(-64);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
 
 	grid->addWidget(pSB, 0,0,1,1);
@@ -376,7 +376,7 @@ QasConfig :: handle_filter_0(int value)
 	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
 	qas_midi_level = pow(2.0, midiLevel);
-	qas_noise_level = pow(2.0, noiseLevel);
+	qas_noise_level = pow(2.0, noiseLevel / 16.0);
 	atomic_unlock();
 }
 
