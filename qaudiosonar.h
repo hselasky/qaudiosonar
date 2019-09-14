@@ -60,7 +60,7 @@
 #include <QGroupBox>
 #include <QImage>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.6.1"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.6.2"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
 #define	QAS_SAMPLES_MAX	48000
