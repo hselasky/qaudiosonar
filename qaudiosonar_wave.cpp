@@ -100,7 +100,7 @@ qas_wave_unlock()
 }
 
 static void
-qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
+qas_wave_analyze(const double *indata, double k_cos, double k_sin, double *out)
 {
 	double cos_in = 0;
 	double sin_in = 0;
@@ -160,28 +160,24 @@ qas_wave_analyze(double *indata, double k_cos, double k_sin, double *out)
 	}
 }
 
-static void
-qas_wave_analyze_binary_search(double *indata, double *out, size_t band, size_t rem)
+static size_t
+qas_wave_analyze_binary_search(const double *indata, double *out, size_t band, size_t rem)
 {
+	double temp[2];
 	size_t pos = 0;
 
 	/* find maximum amplitude */
 	while (rem != 0) {
 		pos |= rem;
 	  	qas_wave_analyze(indata, qas_cos_table[band + pos],
-		    qas_sin_table[band + pos], out + (2 * pos));
-		if (out[2 * pos] < out[2 * pos - 2 * rem])
+		    qas_sin_table[band + pos], temp);
+		if (out[0] > temp[0])
 			pos &= ~rem;
+		else
+			memcpy(out, temp, sizeof(temp));
 		rem /= 2;
 	}
-
-	/* keep maximum */
-	double temp[2] = { out[2 * pos + 0], out[2 * pos + 1] };
-	memset(out, 0, 2 * sizeof(double) * QAS_WAVE_STEP);
-
-	/* restore value */
-	out[2*pos + 0] = temp[0];
-	out[2*pos + 1] = temp[1];
+	return (pos);
 }
 
 static void *
@@ -200,9 +196,16 @@ qas_wave_worker(void *arg)
 			    pjob->data->data_array + pjob->data_offset);
 			break;
 		case QAS_STATE_2ND_SCAN:
-			qas_wave_analyze_binary_search(pjob->data->data_array,
-			    pjob->data->data_array + pjob->data_offset,
-			    pjob->band_start, QAS_WAVE_STEP / 2);
+			pjob->band_start +=
+			    qas_wave_analyze_binary_search(pjob->data->data_array,
+			        pjob->data->data_array + pjob->data_offset,
+			        pjob->band_start, QAS_WAVE_STEP / 2);
+			break;
+		case QAS_STATE_3RD_SCAN:
+			qas_wave_analyze(pjob->data->data_array,
+			    qas_cos_table[pjob->band_start],
+			    qas_sin_table[pjob->band_start],
+			    pjob->data->data_array + pjob->data_offset);
 			break;
 		}
 		qas_display_job_insert(pjob);

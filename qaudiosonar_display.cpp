@@ -117,7 +117,7 @@ qas_display_worker_done(double *data, double *band)
 
 	for (x = 0; x != wi; x++) {
 		y = (x % bwi);
-		if (data[3 * x] > band[3 * y])
+		if (data[3 * x + 0] > band[3 * y + 0])
 			memcpy(band + 3 * y, data + 3 * x, 3 * sizeof(double));
 	}
 }
@@ -125,7 +125,7 @@ qas_display_worker_done(double *data, double *band)
 static void *
 qas_display_worker(void *arg)
 {
-	size_t table_size = qas_num_bands / QAS_WAVE_STEP;
+	const size_t table_size = qas_num_bands / QAS_WAVE_STEP;
 	struct table table[table_size];
 
 	while (1) {
@@ -133,7 +133,6 @@ qas_display_worker(void *arg)
 		struct qas_corr_out_data *pcorr;
 		double *data;
 		double *band;
-		size_t data_size;
 
 		pjob = qas_display_job_dequeue();
 
@@ -144,50 +143,20 @@ qas_display_worker(void *arg)
 		/* get relevant band */
 		band = qas_display_get_band(pcorr->sequence_number);
 
-		/* get data_size */
-		data_size = pjob->data_offset - (pjob->band_start * 2);
-
 		atomic_graph_lock();
 		switch (pcorr->state) {
+			const double *p_value;
 			size_t off;
-			size_t x,z;
-			double *p_value;
-
 		case QAS_STATE_1ST_SCAN:
-			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
+		case QAS_STATE_2ND_SCAN:
+		case QAS_STATE_3RD_SCAN:
+			off = 3 * (pjob->band_start / QAS_WAVE_STEP);
 			p_value = pcorr->data_array + pjob->data_offset;
 
 			/* collect a data point */
 			data[off + 0] = p_value[0];
 			data[off + 1] = p_value[1];
 			data[off + 2] = pjob->band_start;
-
-			for (x = 1; x != QAS_WAVE_STEP_LOG2; x++) {
-				/* collect a data point */
-				data[off + (3 * x) + 0] = 0;
-				data[off + (3 * x) + 1] = 0;
-				data[off + (3 * x) + 2] = 0;
-			}
-			break;
-
-		case QAS_STATE_2ND_SCAN:
-			off = (QAS_WAVE_STEP_LOG2 * pjob->band_start * 3) / QAS_WAVE_STEP;
-			for (x = 0; x != QAS_WAVE_STEP; x++) {
-				p_value = pcorr->data_array + pjob->data_offset + 2 * x;
-				if (p_value[0] > 0.0) {
-					/* clear data point */
-					data[off + 0] = 0;
-					data[off + 1] = 0;
-					data[off + 2] = 0;
-
-					z = (QAS_WAVE_STEP_LOG2 * x) / QAS_WAVE_STEP;
-					/* collect a data point */
-					data[off + (3 * z) + 0] = p_value[0];
-					data[off + (3 * z) + 1] = p_value[1];
-					data[off + (3 * z) + 2] = pjob->band_start + x;
-					break;
-				}
-			}
 			break;
 		}
 		atomic_graph_unlock();
@@ -195,39 +164,80 @@ qas_display_worker(void *arg)
 		/* free current job */
 		qas_wave_job_free(pjob);
 
-		if (--(pcorr->refcount) == 0) {
-			switch (pcorr->state) {
-			case QAS_STATE_1ST_SCAN:
-				for (size_t x = 0; x != table_size; x++) {
-					table[x].value = pcorr->data_array[data_size + 2 * x * QAS_WAVE_STEP];
-					table[x].band = x * QAS_WAVE_STEP;
-				}
-				mergesort(table, table_size, sizeof(table[0]), &qas_table_compare);
-				pcorr->state = QAS_STATE_2ND_SCAN;
+		if (--(pcorr->refcount))
+			continue;
 
-				/* generate jobs for output data */
-				for (size_t x = table_size - (table_size / 4); x != table_size; x++) {
-					if (table[x].value < 16.0)
-						continue;
-					pcorr->refcount++;
-					pjob = qas_wave_job_alloc();
-					pjob->data_offset = data_size + (2 * table[x].band);
-					pjob->band_start = table[x].band;
-					pjob->data = pcorr;
-					qas_wave_job_insert(pjob);
-				}
-				if (pcorr->refcount != 0)
-					break;
-			case QAS_STATE_2ND_SCAN:
-				qas_display_worker_done(data, band);
-
-				qas_corr_out_free(pcorr);
-
-				atomic_lock();
-				qas_out_sequence_number++;
-				atomic_unlock();
-				break;
+		switch (pcorr->state++) {
+		size_t y;
+		case QAS_STATE_1ST_SCAN:
+			for (size_t x = 0; x != table_size; x++) {
+				table[x].value = pcorr->data_array[pcorr->data_size + 2 * x];
+				table[x].band = x;
 			}
+			mergesort(table, table_size, sizeof(table[0]), &qas_table_compare);
+
+			y = table[table_size - 1].band;
+
+			/* avoid beginning and end band */
+			if (y == 0)
+				y++;
+			else if (y == table_size - 1)
+				y = table_size - 2;
+
+			/* submit three new jobs */
+			pcorr->refcount += 3;
+			
+			pjob = qas_wave_job_alloc();
+			pjob->data_offset = pcorr->data_size + (2 * y);
+			pjob->band_start = y * QAS_WAVE_STEP;
+			pjob->data = pcorr;
+			qas_wave_job_insert(pjob);
+
+			pjob = qas_wave_job_alloc();
+			pjob->data_offset = pcorr->data_size + (2 * (y - 1));
+			pjob->band_start = (y - 1) * QAS_WAVE_STEP;
+			pjob->data = pcorr;
+			qas_wave_job_insert(pjob);
+
+			pjob = qas_wave_job_alloc();
+			pjob->data_offset = pcorr->data_size + (2 * (y + 1));
+			pjob->band_start = (y + 1) * QAS_WAVE_STEP;
+			pjob->data = pcorr;
+			qas_wave_job_insert(pjob);
+			break;
+
+		case QAS_STATE_2ND_SCAN:
+
+			/* find largest value */
+			for (size_t x = y = 0; x != table_size; x++) {
+				if (data[3 * x + 0] > data[3 * y + 0])
+					y = x;
+			}
+
+			/* get remainder of band */
+			y = data[3 * y + 2];
+			y %= QAS_WAVE_STEP;
+
+			pcorr->refcount = qas_num_bands / QAS_WAVE_STEP;
+
+			/* generate jobs for output data */
+			for (size_t x = 0; x != qas_num_bands; x += QAS_WAVE_STEP) {
+				pjob = qas_wave_job_alloc();
+				pjob->data_offset = pcorr->data_size + (2 * (x / QAS_WAVE_STEP));
+				pjob->band_start = x + y;
+				pjob->data = pcorr;
+				qas_wave_job_insert(pjob);
+			}
+			break;
+
+		case QAS_STATE_3RD_SCAN:
+			qas_display_worker_done(data, band);
+			qas_corr_out_free(pcorr);
+
+			atomic_lock();
+			qas_out_sequence_number++;
+			atomic_unlock();
+			break;
 		}
 	}
 	return 0;
@@ -242,7 +252,7 @@ qas_display_get_line(size_t which)
 size_t
 qas_display_width()
 {
-	return (((QAS_WAVE_STEP_LOG2 * qas_num_bands) / QAS_WAVE_STEP) * 3);
+	return ((qas_num_bands / QAS_WAVE_STEP) * 3);
 }
 
 double *
@@ -254,7 +264,7 @@ qas_display_get_band(size_t which)
 size_t
 qas_display_band_width()
 {
-	return (12 * QAS_WAVE_STEP_LOG2 * 3);
+	return (12 * 3);
 }
 
 size_t
@@ -294,7 +304,7 @@ qas_display_init()
 
 	for (size_t x = 0; x != size; x++) {
 		qas_iso_table[x] = qas_find_iso(qas_freq_table[
-		    (x / QAS_WAVE_STEP_LOG2) * QAS_WAVE_STEP]);
+		    x * QAS_WAVE_STEP]);
 	}
 
 	size = sizeof(double) * qas_display_band_width() * qas_display_hist_max;

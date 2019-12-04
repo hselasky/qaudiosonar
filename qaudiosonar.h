@@ -195,7 +195,7 @@ public slots:
 class QasBand : public QWidget {
 	Q_OBJECT
 public:
-	enum { BAND_MAX = 12 * QAS_WAVE_STEP_LOG2 };
+	enum { BAND_MAX = 12 };
 	QasBand(QasMainWindow *);
 	~QasBand() { };
 	QasMainWindow *mw;
@@ -345,8 +345,10 @@ struct qas_corr_out_data {
 	size_t sequence_number;
 	size_t refcount;
 	size_t state;
+	size_t data_size;
 #define	QAS_STATE_1ST_SCAN 0
 #define	QAS_STATE_2ND_SCAN 1
+#define	QAS_STATE_3RD_SCAN 2
 	double data_array[];
 };
 

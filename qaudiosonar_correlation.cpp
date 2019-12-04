@@ -116,18 +116,18 @@ static void *
 qas_corr_worker(void *arg)
 {
 	while (1) {
+		const size_t data_size = qas_window_size + (2 * QAS_CORR_SIZE);
 		struct qas_corr_in_data *pin;
 		struct qas_corr_out_data *pout;
 		struct qas_wave_job *pjob;
-		size_t data_size;
 
 		pin = qas_corr_in_job_dequeue();
 
-		data_size = qas_window_size + (2 * QAS_CORR_SIZE);
-		pout = qas_corr_out_alloc(data_size + qas_num_bands * 2);
+		pout = qas_corr_out_alloc(data_size + (2 * qas_num_bands / QAS_WAVE_STEP));
 
 		pout->sequence_number = pin->sequence_number;
 		pout->refcount = qas_num_bands / QAS_WAVE_STEP;
+		pout->data_size = data_size;
 
 		/* do correlation */
 		for (size_t x = 0; x != data_size; x += QAS_CORR_SIZE) {
@@ -150,7 +150,7 @@ qas_corr_worker(void *arg)
 		/* generate jobs for output data */
 		for (size_t band = 0; band != qas_num_bands; band += QAS_WAVE_STEP) {
 			pjob = qas_wave_job_alloc();
-			pjob->data_offset = data_size + (2 * band);
+			pjob->data_offset = data_size + (2 * band / QAS_WAVE_STEP);
 			pjob->band_start = band;
 			pjob->data = pout;
 			qas_wave_job_insert(pjob);

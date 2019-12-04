@@ -485,12 +485,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 			stop = y + LIMIT;
 
 		/* fill nice square */
-		for (size_t t = start; t != stop; t++) {
-			for (x = 0; x != (QAS_WAVE_STEP_LOG2 / 2); x++) {
-				size_t u = (x + z + BAND_MAX - (QAS_WAVE_STEP_LOG2 / 4)) % BAND_MAX;
-				bg[t][u] += band[3 * z];
-			}
-		}
+		for (size_t t = start; t != stop; t++)
+			bg[t][z] += band[3 * z];
 	}
 
 	size_t s_max;
@@ -503,6 +499,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
 		double max;
+		double min;
 		size_t x, z;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
@@ -511,32 +508,36 @@ QasBand :: paintEvent(QPaintEvent *event)
 		}
 
 		max = band[3 * z];
-		if (max < 2.0)
-			max = 2.0;
+		if (max < 1.0)
+			max = 1.0;
 
 		real_band = band[3 * z + 2];
 		real_amp = band[3 * z];
+		
+		for (z = x = 0; x != BAND_MAX; x++) {
+			if (band[3 * x] < band[3 * z])
+				z = x;
+		}
+
+		min = band[3 * z];
+		if (min < 1.0)
+			min = 1.0;
+
+		if (max == min)
+			continue;
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
-			double value = band[3 * x];
-			if (value != max)
-				value /= 2.0;
+			double value = (band[3 * x] - min) / (max - min);
 
-			int level = pow(value / max, 3) * 255.0;
+			int level = value * 255.0;
 			if (level > 255)
 				level = 255;
 			else if (level < 0)
 				level = 0;
 
-			int other = level + (bg[y][x] / bg[0][s_max]) * 255.0;
-			if (other > 255)
-				other = 255;
-			else if (other < 0)
-				other = 0;
-
-			QColor hc(255 - other, 255 - level, 255 - other, 255);
+			QColor hc(255 - level, 255 - level, 255 - level, 255);
 			size_t yo = hi - 1 - y;
-			accu.setPixelColor((x + QAS_WAVE_STEP_LOG2 / 2) % BAND_MAX, yo, hc);
+			accu.setPixelColor(x, yo, hc);
 		}
 	}
 	atomic_graph_unlock();
@@ -587,6 +588,7 @@ QasGraph :: getText(QMouseEvent *event)
 	case 3:
 		band = (qas_num_bands * event->x()) / width();
 		if (band > -1 && band < (int)qas_num_bands) {
+			band -= band % QAS_WAVE_STEP;
 			return QString(qas_descr_table[band]) +
 			  QString(" /* %1Hz */").arg(QAS_FREQ_TABLE_ROUNDED(band));
 		} else {
@@ -707,41 +709,40 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	for (size_t y = 0; y != hi; y++) {
 		double *data = qas_display_get_line(y + seq);
 		double max;
-		size_t x, z, t;
+		size_t x, z;
 
 		for (z = x = 0; x != wi; x++) {
 			if (data[3 * x] > data[3 * z])
 				z = x;
 		}
 		max = data[3 * z];
-		if (max < 2.0)
+		if (max < 2.0) {
 			max = 2.0;
+			continue;
+		}
 
 		if (y == hi - 1) {
-			for (z = x = 0; x != wi; x++) {
+			for (x = 0; x != wi; x++) {
 				if (data[3 * x] < 1.0)
 					continue;
 				double power_new = data[3 * x];
 				double phase_new = data[3 * x + 1];
 
-				for (t = z; t != (x + 1); t++) {
-					int power_y = (double)(power_new / max) * (hg - 1);
-					if (power_y < 0)
-						power_y = 0;
-					else if (power_y > (int)(hg - 1))
-						power_y = (int)(hg - 1);
-					for (int n = 0; n != power_y; n++)
-						power.setPixelColor(t, hg - 1 - n, power_c);
+				int power_y = (double)(power_new / max) * (hg - 1);
+				if (power_y < 0)
+					power_y = 0;
+				else if (power_y > (int)(hg - 1))
+					power_y = (int)(hg - 1);
+				for (int n = 0; n != power_y; n++)
+					power.setPixelColor(x, hg - 1 - n, power_c);
 
-					int phase_y = (double)(phase_new / (2.0 * M_PI)) * (hg - 1);
-					if (phase_y < 0)
-						phase_y = 0;
-					else if (phase_y > (int)(hg - 1))
-						phase_y = (int)(hg - 1);
-					for (int n = 0; n != phase_y; n++)
-						phase.setPixelColor(t, hg - 1 - n, phase_c);
-				}
-				z = x;
+				int phase_y = (double)(phase_new / (2.0 * M_PI)) * (hg - 1);
+				if (phase_y < 0)
+					phase_y = 0;
+				else if (phase_y > (int)(hg - 1))
+					phase_y = (int)(hg - 1);
+				for (int n = 0; n != phase_y; n++)
+					phase.setPixelColor(x, hg - 1 - n, phase_c);
 			}
 		}
 		for (size_t x = 0; x != wi; x++) {
