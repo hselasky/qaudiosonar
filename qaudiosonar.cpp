@@ -436,6 +436,30 @@ QasBand :: mouseMoveEvent(QMouseEvent *event)
 }
 
 void
+QasBand :: mouseDoubleClickEvent(QMouseEvent *event)
+{
+  	size_t wi = qas_display_width() / 3;
+	size_t hi;
+	size_t seq = QasGetSequenceNumber(&hi);
+	double *data = qas_display_get_line(seq + hi - 1);
+	double sum = 0;
+	QString str;
+
+	for (size_t x = 0; x != wi; x++)
+		sum += data[3 * x];
+
+	sum = (2.0 * sum) / wi;
+
+	for (size_t x = 0; x != wi; x++) {
+		if (data[3 * x] > sum) {
+			str += qas_descr_table[x * QAS_WAVE_STEP];
+			str += " ";
+		}
+	}
+	mw->edit->appendPlainText(str);
+}
+
+void
 QasBand :: paintEvent(QPaintEvent *event)
 {
 	enum { LIMIT = 8 };
@@ -461,41 +485,6 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	atomic_graph_lock();
 
-	double bg[hi][BAND_MAX];
-
-	memset(bg, 0, sizeof(bg));
-
-	for (size_t y = 0; y != hi; y++) {
-		double *band = qas_display_get_band(y + seq);
-		size_t x, z;
-		size_t start;
-		size_t stop;
-
-		for (z = x = 0; x != BAND_MAX; x++) {
-			if (band[3 * x] > band[3 * z])
-				z = x;
-		}
-		if (y > LIMIT)
-			start = y - LIMIT;
-		else
-			start = 0;
-		if ((y + LIMIT) > hi)
-			stop = hi;
-		else
-			stop = y + LIMIT;
-
-		/* fill nice square */
-		for (size_t t = start; t != stop; t++)
-			bg[t][z] += band[3 * z];
-	}
-
-	size_t s_max;
-
-	for (size_t x = s_max = 0; x != (hi * BAND_MAX); x++) {
-		if (bg[0][x] > bg[0][s_max])
-			s_max = x;
-	}
-
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
 		double max;
@@ -513,9 +502,10 @@ QasBand :: paintEvent(QPaintEvent *event)
 			continue;
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
-			double value = band[3 * x] / max;
+			double value = band[3 * x];
 
-			int level = value * 255.0;
+			int level = (value / max) * 255.0;
+
 			if (level > 255)
 				level = 255;
 			else if (level < 0)
@@ -637,7 +627,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	QImage corr(w, hg, QImage::Format_ARGB32);
 
 	QColor transparent = QColor(0,0,0,0);
-	QColor power_c = QColor(0,0,0,255);
 	QColor phase_c = QColor(192,192,0,255);
 	QColor corr_c = QColor(255,0,0,255);
 	QColor white(255,255,255);
@@ -695,12 +684,16 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	for (size_t y = 0; y != hi; y++) {
 		double *data = qas_display_get_line(y + seq);
 		double max;
+		double sum = 0.0;
 		size_t x, z;
 
 		for (z = x = 0; x != wi; x++) {
+			sum += data[3 * x];
 			if (data[3 * x] > data[3 * z])
 				z = x;
 		}
+
+		sum = (2.0 * sum) / wi + 1.0;
 		max = data[3 * z];
 		if (max < 2.0) {
 			max = 2.0;
@@ -711,6 +704,9 @@ QasGraph :: paintEvent(QPaintEvent *event)
 			for (x = 0; x != wi; x++) {
 				if (data[3 * x] < 1.0)
 					continue;
+				QColor power_c = (data[3 * x] >= sum) ?
+				  QColor(0,0,0,255) : QColor(192,192,192,255);
+
 				double power_new = data[3 * x];
 				double phase_new = data[3 * x + 1];
 
@@ -781,8 +777,8 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.drawText(QPoint(0,16),str);
 
 	str = "POWER";
-	paint.setPen(QPen(power_c,0));
-	paint.setBrush(power_c);
+	paint.setPen(QPen(black,0));
+	paint.setBrush(black);
 	paint.drawText(QPoint(0,32),str);
 
 	str = "PHASE";

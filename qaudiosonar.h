@@ -206,6 +206,7 @@ public:
 	void paintEvent(QPaintEvent *);
 	void mousePressEvent(QMouseEvent *);
 	void mouseMoveEvent(QMouseEvent *);
+	void mouseDoubleClickEvent(QMouseEvent *);
 
 public slots:
 	void handle_watchdog();

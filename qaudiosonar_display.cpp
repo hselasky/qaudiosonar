@@ -111,14 +111,24 @@ qas_display_worker_done(double *data, double *band)
 {
 	size_t wi = qas_display_width() / 3;
 	size_t bwi = qas_display_band_width() / 3;
-	size_t x,y;
+	size_t x;
+	double sum = 0;
+
+	for (x = 0; x != wi; x++)
+		sum += data[3 * x];
+
+	sum = (2.0 * sum / wi) + 1.0;
 
 	memset(band, 0, sizeof(double) * 3 * bwi);
 
 	for (x = 0; x != wi; x++) {
-		y = (x % bwi);
-		if (data[3 * x + 0] > band[3 * y + 0])
-			memcpy(band + 3 * y, data + 3 * x, 3 * sizeof(double));
+		double value = data[3 * x + 0];
+		size_t y = (x % bwi);
+
+		if (value > band[3 * y + 0]) {
+			band[3 * y + 0] = (value > sum) ? value : 0;
+			band[3 * y + 2] = data[3 * x + 2];
+		}
 	}
 }
 
