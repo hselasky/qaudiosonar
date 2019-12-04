@@ -499,7 +499,6 @@ QasBand :: paintEvent(QPaintEvent *event)
 	for (size_t y = 0; y != hi; y++) {
 		double *band = qas_display_get_band(y + seq);
 		double max;
-		double min;
 		size_t x, z;
 
 		for (z = x = 0; x != BAND_MAX; x++) {
@@ -507,27 +506,14 @@ QasBand :: paintEvent(QPaintEvent *event)
 				z = x;
 		}
 
-		max = band[3 * z];
-		if (max < 1.0)
-			max = 1.0;
-
 		real_band = band[3 * z + 2];
-		real_amp = band[3 * z];
-		
-		for (z = x = 0; x != BAND_MAX; x++) {
-			if (band[3 * x] < band[3 * z])
-				z = x;
-		}
+		max = real_amp = band[3 * z];
 
-		min = band[3 * z];
-		if (min < 1.0)
-			min = 1.0;
-
-		if (max == min)
+		if (max < 1.0)
 			continue;
 
 		for (size_t x = 0; x != BAND_MAX; x++) {
-			double value = (band[3 * x] - min) / (max - min);
+			double value = band[3 * x] / max;
 
 			int level = value * 255.0;
 			if (level > 255)
