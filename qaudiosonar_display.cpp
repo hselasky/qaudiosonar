@@ -91,8 +91,8 @@ struct table {
 static int
 qas_table_compare(const void *_a, const void *_b)
 {
-	struct table *a = (struct table *)_a;
-	struct table *b = (struct table *)_b;
+	const struct table *a = (const struct table *)_a;
+	const struct table *b = (const struct table *)_b;
 
 	if (a->value > b->value)
 		return (1);
@@ -101,6 +101,38 @@ qas_table_compare(const void *_a, const void *_b)
 	else if (a->band > b->band)
 		return (1);
 	else if (a->band < b->band)
+		return (-1);
+	else
+		return (0);
+}
+
+static int
+qas_band_amp_compare(const void *_a, const void *_b)
+{
+	const double *a = (const double *)_a;
+	const double *b = (const double *)_b;
+
+	if (a[0] > b[0])
+		return (1);
+	else if (a[0] < b[0])
+		return (-1);
+	else if (a[1] > b[1])
+		return (1);
+	else if (a[1] < b[1])
+		return (-1);
+	else
+		return (0);
+}
+
+static int
+qas_band_tone_compare(const void *_a, const void *_b)
+{
+	const double *a = (const double *)_a;
+	const double *b = (const double *)_b;
+
+	if (a[1] > b[1])
+		return (1);
+	else if (a[1] < b[1])
 		return (-1);
 	else
 		return (0);
@@ -121,15 +153,33 @@ qas_display_worker_done(double *data, double *band)
 
 	memset(band, 0, sizeof(double) * 3 * bwi);
 
-	for (x = 0; x != wi; x++) {
+	for (x = 0; x != bwi; x++)
+		band[3 * x + 1] = x;
+
+	for (x = 1; x != (wi - 1); x++) {
 		double value = data[3 * x + 0];
+
+		/* find a top */
+		if (value < data[3 * (x - 1)] ||
+		    value < data[3 * (x + 1)] ||
+		    value < sum)
+			continue;
+
 		size_t y = (x % bwi);
 
 		if (value > band[3 * y + 0]) {
-			band[3 * y + 0] = (value > sum) ? value : 0;
+			band[3 * y + 0] = value;
 			band[3 * y + 2] = data[3 * x + 2];
 		}
 	}
+
+	mergesort(band, bwi, 3 * sizeof(double), &qas_band_amp_compare);
+	for (x = 0; x != bwi; x++) {
+		if (band[3 * x + 0] == 0.0)
+			continue;
+		band[3 * x + 0] = x * x;
+	}
+	mergesort(band, bwi, 3 * sizeof(double), &qas_band_tone_compare);
 }
 
 static void *

@@ -156,7 +156,7 @@ QasMidilevelBox :: QasMidilevelBox()
 
 	pSB = new QScrollBar(Qt::Horizontal);
 
-	pSB->setRange(0, 63);
+	pSB->setRange(0, QasBand::BAND_MAX - 1);
 	pSB->setSingleStep(1);
 	pSB->setValue(0);
 	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
@@ -369,7 +369,7 @@ QasConfig :: handle_filter_0(int value)
 	atomic_lock();
 	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
-	qas_midi_level = pow(2.0, midiLevel);
+	qas_midi_level = midiLevel * midiLevel;
 	qas_noise_level = pow(2.0, noiseLevel / 16.0);
 	atomic_unlock();
 }
@@ -419,44 +419,79 @@ QasBand :: getText(QMouseEvent *event)
 	return (QString(qas_key_map[key]).arg(5));
 }
 
+QString
+QasBand :: getFullText(int ypos)
+{
+  	size_t wi = qas_display_band_width() / 3;
+  	size_t hi;
+	size_t seq = QasGetSequenceNumber(&hi);
+	int ho = (hi * ypos) / height();
+	QString str;
+	ssize_t real_offset;
+	ssize_t real_band;
+	size_t y;
+
+	if (ho < 0)
+		ho = 0;
+	else if (ho >= (int)hi)
+		ho = hi - 1;
+
+	double *band = qas_display_get_band(hi - 1 - ho + seq);
+
+	for (size_t x = y = 0; x != wi; x++) {
+		if (band[3 * x] > band[3 * y])
+			y = x;
+		if (band[3 * x] != 0.0) {
+			size_t offset = band[3 * x + 2];
+			size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
+
+			str += QString(qas_key_map[key % 12]).arg(key / 12);
+			str += " ";
+
+			if (qas_record != 0 && band[3 * x] >= qas_midi_level) {
+				qas_midi_key_send(0, key, 90, 50);
+				qas_midi_key_send(0, key, 0, 0);
+			}
+		}
+	}
+
+	/* get band */
+	real_band = band[3 * y + 2];
+
+	/* compute offset */
+	real_offset = (real_band + (QAS_WAVE_STEP / 2));
+	real_offset -= real_offset % QAS_WAVE_STEP;
+	real_offset = (real_band - real_offset);
+	real_offset %= QAS_WAVE_STEP;
+
+	size_t key = 9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
+
+	str += "/* ";
+	str += QString(qas_key_map[key % 12]).arg(key / 12);
+	str += QString(" %2Hz R=%3 */")
+	    .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
+	    .arg((double)real_offset / (double)QAS_WAVE_STEP, 0, 'f', 3);
+
+	return (str);
+}
+
 void
 QasBand :: mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
-	} else {
+	} else if (event->button() == Qt::MiddleButton) {
 		mw->edit->appendPlainText(getText(event));
+	} else if (event->button() == Qt::LeftButton) {
+		mw->edit->appendPlainText(getFullText(event->y()));
 	}
+	event->accept();
 }
 
 void
 QasBand :: mouseMoveEvent(QMouseEvent *event)
 {
 	setToolTip(getText(event));
-}
-
-void
-QasBand :: mouseDoubleClickEvent(QMouseEvent *event)
-{
-  	size_t wi = qas_display_width() / 3;
-	size_t hi;
-	size_t seq = QasGetSequenceNumber(&hi);
-	double *data = qas_display_get_line(seq + hi - 1);
-	double sum = 0;
-	QString str;
-
-	for (size_t x = 0; x != wi; x++)
-		sum += data[3 * x];
-
-	sum = (2.0 * sum) / wi;
-
-	for (size_t x = 0; x != wi; x++) {
-		if (data[3 * x] > sum) {
-			str += qas_descr_table[x * QAS_WAVE_STEP];
-			str += " ";
-		}
-	}
-	mw->edit->appendPlainText(str);
 }
 
 void
@@ -467,9 +502,8 @@ QasBand :: paintEvent(QPaintEvent *event)
 	int w = width();
 	int h = height();
 	size_t hi;
-	size_t real_band = 0;
-	ssize_t real_offset = 0;
-	double real_amp = 0;
+	ssize_t real_band = 0;
+	ssize_t real_offset;
 
 	if (w == 0 || h == 0)
 		return;
@@ -496,7 +530,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 		}
 
 		real_band = band[3 * z + 2];
-		max = real_amp = band[3 * z];
+		max = band[3 * z];
 
 		if (max < 1.0)
 			continue;
@@ -518,36 +552,25 @@ QasBand :: paintEvent(QPaintEvent *event)
 	}
 	atomic_graph_unlock();
 
+	if (qas_record != 0) {
+		QString str = getFullText(0);
+		mw->handle_append_text(str);
+	}
+
+	paint.drawImage(QRect(0,0,w,h),accu);
+
 	/* compute offset */
 	real_offset = (real_band + (QAS_WAVE_STEP / 2));
 	real_offset -= real_offset % QAS_WAVE_STEP;
 	real_offset = (real_band - real_offset);
 	real_offset %= QAS_WAVE_STEP;
 
-	char temp[8];
-	snprintf(temp, sizeof(temp), "%1.3f", (float)real_offset / (float)QAS_WAVE_STEP);
 	size_t key = 9 + (real_band + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
-	QString str_key;
-	str_key = QString(qas_key_map[key % 12]).arg(key / 12);
 
-	if (qas_record != 0 && real_amp >= qas_midi_level) {
-		QString str = str_key + QString(" /* L=%1 F=%2Hz R=%3 */")
-		    .arg((int)(log(real_amp)/log(2.0)))
-		    .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
-		    .arg(QString(temp));
-
-		qas_midi_key_send(0, key, 90, 50);
-		qas_midi_key_send(0, key, 0, 0);
-
-		mw->handle_append_text(str);
-	}
-
-	paint.drawImage(QRect(0,0,w,h),accu);
-
-	QString str = str_key +
+	QString str = QString(qas_key_map[key % 12]).arg(key / 12) +
 	  QString(" - %1Hz\nR=%2")
 	  .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
-	  .arg(QString(temp));
+	  .arg((double)real_offset / (double)QAS_WAVE_STEP, 0, 'f', 3);
 	mw->lbl_max->setText(str);
 }
 
@@ -589,9 +612,10 @@ QasGraph :: mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::RightButton) {
 		mw->edit->appendPlainText("");
-	} else {
+	} else if (event->button() == Qt::LeftButton) {
 		mw->edit->appendPlainText(getText(event));
 	}
+	event->accept();
 }
 
 void
