@@ -438,8 +438,6 @@ QasBand :: getFullText(int ypos)
 
 	double *band = qas_display_get_band(hi - 1 - ho + seq);
 
-	printf("%p BAND\n", band);
-
 	for (size_t x = y = 0; x != wi; x++) {
 		if (band[3 * x] > band[3 * y])
 			y = x;
@@ -452,9 +450,9 @@ QasBand :: getFullText(int ypos)
 		}
 	}
 	if (qas_record != 0) {
-	  	for (size_t x = 0; x != wi; x++) {
+		for (size_t x = 0; x != wi; x++) {
 			if (band[3 * x] == 0.0)
-				continue;			
+				continue;
 			if (band[3 * x] >= qas_midi_level) {
 				size_t offset = band[3 * x + 2];
 				size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
@@ -463,7 +461,7 @@ QasBand :: getFullText(int ypos)
 		}
 		qas_midi_delay_send(50);
 
-	  	for (size_t x = 0; x != wi; x++) {
+		for (size_t x = 0; x != wi; x++) {
 			if (band[3 * x] == 0.0)
 				continue;
 			if (band[3 * x] >= qas_midi_level) {
