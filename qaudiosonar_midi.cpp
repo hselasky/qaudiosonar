@@ -44,6 +44,20 @@ qas_midi_key_send(uint8_t channel, uint8_t key, uint8_t vel, uint8_t delay)
 	atomic_unlock();
 }
 
+void
+qas_midi_delay_send(uint8_t delay)
+{
+	const uint8_t temp[4] = { 0, 0, 0, delay };
+
+	atomic_lock();
+	if (midi_write_offset <= QAS_MIDI_BUFSIZE - sizeof(temp)) {
+		memcpy(midi_write_buffer + midi_write_offset, temp, sizeof(temp));
+		midi_write_offset += sizeof(temp);
+	  	atomic_wakeup();
+	}
+	atomic_unlock();
+}
+
 static void *
 qas_midi_write_thread(void *)
 {
@@ -95,10 +109,12 @@ top:
 			atomic_unlock();
 
 			for (size_t x = 0; x != offset; x += 4) {
-				uint8_t delay = buffer[3];
-				err = write(f, buffer + x, 3);
-				if (err != 3)
-					goto top;
+				uint32_t delay = buffer[3];
+				if (buffer[x] || buffer[x + 1] || buffer[x + 2]) {
+					err = write(f, buffer + x, 3);
+					if (err != 3)
+						goto top;
+				}
 				if (delay != 0)
 					usleep(1000 * delay);
 			}

@@ -423,5 +423,6 @@ extern double qas_noise_level;
 
 extern void qas_midi_init();
 extern void qas_midi_key_send(uint8_t, uint8_t, uint8_t, uint8_t);
+extern void qas_midi_delay_send(uint8_t);
 
 #endif			/* _QAUDIOSONAR_H_ */

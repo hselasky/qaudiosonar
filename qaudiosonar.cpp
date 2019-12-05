@@ -438,21 +438,41 @@ QasBand :: getFullText(int ypos)
 
 	double *band = qas_display_get_band(hi - 1 - ho + seq);
 
+	printf("%p BAND\n", band);
+
 	for (size_t x = y = 0; x != wi; x++) {
 		if (band[3 * x] > band[3 * y])
 			y = x;
-		if (band[3 * x] != 0.0) {
+		if (band[3 * x] > 0.0) {
 			size_t offset = band[3 * x + 2];
 			size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
 
 			str += QString(qas_key_map[key % 12]).arg(key / 12);
 			str += " ";
+		}
+	}
+	if (qas_record != 0) {
+	  	for (size_t x = 0; x != wi; x++) {
+			if (band[3 * x] == 0.0)
+				continue;			
+			if (band[3 * x] >= qas_midi_level) {
+				size_t offset = band[3 * x + 2];
+				size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
+				qas_midi_key_send(0, key, 90, 0);
+			}
+		}
+		qas_midi_delay_send(50);
 
-			if (qas_record != 0 && band[3 * x] >= qas_midi_level) {
-				qas_midi_key_send(0, key, 90, 50);
+	  	for (size_t x = 0; x != wi; x++) {
+			if (band[3 * x] == 0.0)
+				continue;
+			if (band[3 * x] >= qas_midi_level) {
+				size_t offset = band[3 * x + 2];
+				size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
 				qas_midi_key_send(0, key, 0, 0);
 			}
 		}
+		qas_midi_delay_send(50);
 	}
 
 	/* get band */
@@ -552,7 +572,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	}
 	atomic_graph_unlock();
 
-	if (qas_record != 0) {
+	if (qas_record != 0 && qas_freeze == 0) {
 		QString str = getFullText(0);
 		mw->handle_append_text(str);
 	}
