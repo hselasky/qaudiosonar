@@ -109,7 +109,7 @@ top:
 			atomic_unlock();
 
 			for (size_t x = 0; x != offset; x += 4) {
-				uint32_t delay = buffer[3];
+				uint32_t delay = buffer[x + 3];
 				if (buffer[x] || buffer[x + 1] || buffer[x + 2]) {
 					err = write(f, buffer + x, 3);
 					if (err != 3)
