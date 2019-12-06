@@ -144,12 +144,6 @@ qas_display_worker_done(double *data, double *band)
 	size_t wi = qas_display_width() / 3;
 	size_t bwi = qas_display_band_width() / 3;
 	size_t x;
-	double sum = 0;
-
-	for (x = 0; x != wi; x++)
-		sum += data[3 * x];
-
-	sum = (2.0 * sum / wi) + 1.0;
 
 	memset(band, 0, sizeof(double) * 3 * bwi);
 
@@ -157,19 +151,18 @@ qas_display_worker_done(double *data, double *band)
 		band[3 * x + 1] = x;
 
 	for (x = 1; x != (wi - 1); x++) {
-		double value = data[3 * x + 0];
+		double ref;
+		double value = data[3 * x];
 
-		/* find a top */
-		if (value < data[3 * (x - 1)] ||
-		    value < data[3 * (x + 1)] ||
-		    value < sum)
-			continue;
+		ref = QasReference(data[3 * x], data[3 * (x + 1)], data[3 * (x - 1)]);
 
-		size_t y = (x % bwi);
+		if (value >= ref) {
+			size_t y = (x % bwi);
 
-		if (value > band[3 * y + 0]) {
-			band[3 * y + 0] = value;
-			band[3 * y + 2] = data[3 * x + 2];
+			if (value > band[3 * y + 0]) {
+				band[3 * y + 0] = value;
+				band[3 * y + 2] = data[3 * x + 2];
+			}
 		}
 	}
 

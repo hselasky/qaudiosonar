@@ -642,6 +642,21 @@ QasGraph :: mouseMoveEvent(QMouseEvent *event)
 	setToolTip(getText(event));
 }
 
+double
+QasReference(double a, double b, double c)
+{
+	double max;
+
+	if (a >= b && a >= c)
+		max = a;
+	else if (b >= a && b >= c)
+		max = b;
+	else
+		max = c;
+
+	return ((double)qas_sensitivity * (a + b + c - max) / 4.0);
+}
+
 void
 QasGraph :: paintEvent(QPaintEvent *event)
 {
@@ -726,16 +741,13 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	for (size_t y = 0; y != hi; y++) {
 		double *data = qas_display_get_line(y + seq);
 		double max;
-		double sum = 0.0;
 		size_t x, z;
 
 		for (z = x = 0; x != wi; x++) {
-			sum += data[3 * x];
 			if (data[3 * x] > data[3 * z])
 				z = x;
 		}
 
-		sum = (2.0 * sum) / wi + 1.0;
 		max = data[3 * z];
 		if (max < 2.0) {
 			max = 2.0;
@@ -744,10 +756,17 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 		if (y == hi - 1) {
 			for (x = 0; x != wi; x++) {
-				if (data[3 * x] < 1.0)
-					continue;
-				QColor power_c = (data[3 * x] >= sum) ?
-				  QColor(0,0,0,255) : QColor(192,192,192,255);
+				double ref;
+
+				if (x == 0)
+					ref = QasReference(data[3 * x], data[3 * (x + 2)], data[3 * (x + 1)]);
+				else if (x == (wi - 1))
+					ref = QasReference(data[3 * x], data[3 * (x - 2)], data[3 * (x - 1)]);
+				else
+					ref = QasReference(data[3 * x], data[3 * (x + 1)], data[3 * (x - 1)]);
+
+				QColor power_c = (data[3 * x] >= ref) ?
+				  QColor(0,0,0,255) : QColor(127,127,127,255);
 
 				double power_new = data[3 * x];
 				double phase_new = data[3 * x + 1];
@@ -948,6 +967,13 @@ QasMainWindow :: QasMainWindow()
 	tuning->setPrefix("Fine tuning +/-999: ");
 	connect(tuning, SIGNAL(valueChanged(int)), this, SLOT(handle_tuning()));
 
+	sensitivity = new QSlider();
+	sensitivity->setRange(0, 16);
+	sensitivity->setValue(0);
+	sensitivity->setToolTip("Sensitivity");
+	sensitivity->setOrientation(Qt::Horizontal);
+	connect(sensitivity, SIGNAL(valueChanged(int)), this, SLOT(handle_sensitivity()));
+
 	edit = new QPlainTextEdit();
 	
 	qbw = new QWidget();
@@ -960,9 +986,10 @@ QasMainWindow :: QasMainWindow()
 
 	glb->addWidget(lbl_max, 1,0,1,1);
 	glb->addWidget(tuning, 2,0,1,1);
-	glb->addWidget(qb, 3,0,1,1);
-	glb->addWidget(edit, 4,0,1,1);
-	glb->setRowStretch(3,1);
+	glb->addWidget(sensitivity, 3,0,1,1);
+	glb->addWidget(qb, 4,0,1,1);
+	glb->addWidget(edit, 5,0,1,1);
+	glb->setRowStretch(4,1);
 
 	connect(this, SIGNAL(handle_append_text(const QString)), edit, SLOT(appendPlainText(const QString &)));
 
@@ -1069,6 +1096,14 @@ QasMainWindow :: handle_tuning()
 		qas_cos_table[x] = cos(r);
 		qas_sin_table[x] = sin(r);
 	}
+}
+
+void
+QasMainWindow :: handle_sensitivity()
+{
+	atomic_lock();
+	qas_sensitivity = sensitivity->value();
+	atomic_unlock();
 }
 
 void

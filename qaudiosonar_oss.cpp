@@ -32,6 +32,7 @@ int	qas_source_1;
 int	qas_output_0;
 int	qas_output_1;
 int	qas_freeze;
+int	qas_sensitivity;
 int	qas_record;
 PaDeviceIndex qas_rx_device = paNoDevice;
 PaDeviceIndex qas_tx_device = paNoDevice;

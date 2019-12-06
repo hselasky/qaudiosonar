@@ -59,6 +59,7 @@
 #include <QPlainTextEdit>
 #include <QGroupBox>
 #include <QImage>
+#include <QSlider>
 
 #define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.6.2"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
@@ -255,6 +256,7 @@ public:
 	QLineEdit *led_midi_write;
 	QPlainTextEdit *edit;
 	QSpinBox *tuning;
+	QSlider *sensitivity;
 	QPushButton *but_dsp_rx;
 	QPushButton *but_dsp_tx;
 	QPushButton *but_midi_tx;
@@ -272,6 +274,7 @@ public slots:
 	void handle_config();
 	void handle_view();
 	void handle_tuning();
+	void handle_sensitivity();
 	void handle_dsp_rx();
 	void handle_dsp_tx();
 };
@@ -289,6 +292,7 @@ extern int qas_output_0;
 extern int qas_output_1;
 extern int qas_freeze;
 extern int qas_record;
+extern int qas_sensitivity;
 extern double qas_view_decay;
 extern QasMainWindow *qas_mw;
 extern double qas_low_octave;
@@ -300,6 +304,8 @@ void atomic_graph_lock();
 void atomic_graph_unlock();
 void atomic_wait();
 void atomic_wakeup();
+
+double QasReference(double a, double b, double c);
 
 /* ============== MULTIPLY SUPPORT ============== */
 
