@@ -122,9 +122,12 @@ qas_display_worker_done(double *data, double *band)
 		double value = data[3 * x];
 		size_t y = (x % bwi);
 
-		if (value > band[3 * y + 0]) {
-			band[3 * y + 0] = value;
-			band[3 * y + 2] = data[3 * x + 2];
+		if (value >= data[3 * (x - 1)] &&
+		    value >= data[3 * (x + 1)]) {
+			if (value >= band[3 * y]) {
+				band[3 * y] = value;
+				band[3 * y + 2] = data[3 * x + 2];
+			}
 		}
 	}
 }
@@ -152,16 +155,14 @@ qas_display_worker(void *arg)
 
 		atomic_graph_lock();
 		switch (pcorr->state) {
-			const double *p_value;
 			size_t off;
 		case QAS_STATE_1ST_SCAN:
 		case QAS_STATE_2ND_SCAN:
 		case QAS_STATE_3RD_SCAN:
 			off = 3 * (pjob->band_start / QAS_WAVE_STEP);
-			p_value = pcorr->band_data + (pjob->band_start / QAS_WAVE_STEP);
 
 			/* collect a data point */
-			data[off + 0] = p_value[0];
+			data[off + 0] = pcorr->band_data[pjob->band_start / QAS_WAVE_STEP];
 			data[off + 1] = 0;
 			data[off + 2] = pjob->band_start;
 			break;

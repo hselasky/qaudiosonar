@@ -1062,6 +1062,8 @@ QasMainWindow :: handle_sensitivity()
 	atomic_lock();
 	qas_sensitivity = sensitivity->value();
 	atomic_unlock();
+
+	qb->update();
 }
 
 void

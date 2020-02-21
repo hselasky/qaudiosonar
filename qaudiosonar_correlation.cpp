@@ -112,7 +112,6 @@ static void *
 qas_corr_worker(void *arg)
 {
 	while (1) {
-		const size_t data_size = qas_window_size + (2 * QAS_CORR_SIZE);
 		struct qas_corr_data *ptr;
 		struct qas_wave_job *pjob;
 
