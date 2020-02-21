@@ -106,38 +106,6 @@ qas_table_compare(const void *_a, const void *_b)
 		return (0);
 }
 
-static int
-qas_band_amp_compare(const void *_a, const void *_b)
-{
-	const double *a = (const double *)_a;
-	const double *b = (const double *)_b;
-
-	if (a[0] > b[0])
-		return (1);
-	else if (a[0] < b[0])
-		return (-1);
-	else if (a[1] > b[1])
-		return (1);
-	else if (a[1] < b[1])
-		return (-1);
-	else
-		return (0);
-}
-
-static int
-qas_band_tone_compare(const void *_a, const void *_b)
-{
-	const double *a = (const double *)_a;
-	const double *b = (const double *)_b;
-
-	if (a[1] > b[1])
-		return (1);
-	else if (a[1] < b[1])
-		return (-1);
-	else
-		return (0);
-}
-
 static void
 qas_display_worker_done(double *data, double *band)
 {
@@ -151,28 +119,14 @@ qas_display_worker_done(double *data, double *band)
 		band[3 * x + 1] = x;
 
 	for (x = 1; x != (wi - 1); x++) {
-		double ref;
 		double value = data[3 * x];
+		size_t y = (x % bwi);
 
-		ref = QasReference(data[3 * x], data[3 * (x + 1)], data[3 * (x - 1)]);
-
-		if (value >= ref) {
-			size_t y = (x % bwi);
-
-			if (value > band[3 * y + 0]) {
-				band[3 * y + 0] = value;
-				band[3 * y + 2] = data[3 * x + 2];
-			}
+		if (value > band[3 * y + 0]) {
+			band[3 * y + 0] = value;
+			band[3 * y + 2] = data[3 * x + 2];
 		}
 	}
-
-	mergesort(band, bwi, 3 * sizeof(double), &qas_band_amp_compare);
-	for (x = 0; x != bwi; x++) {
-		if (band[3 * x + 0] == 0.0)
-			continue;
-		band[3 * x + 0] = x * x;
-	}
-	mergesort(band, bwi, 3 * sizeof(double), &qas_band_tone_compare);
 }
 
 static void *

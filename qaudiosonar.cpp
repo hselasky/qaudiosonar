@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2019 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2020 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -34,7 +34,7 @@ static pthread_cond_t atomic_cv;
 static const char *qas_key_map[12] = {
   "C%1", "D%1B", "D%1", "E%1B", "E%1",
   "F%1", "G%1B", "G%1", "A%1B",
-  "A%1", "H%1B", "H%1",
+  "A%1", "B%1B", "B%1",
 };
 
 int qas_num_workers = 2;
@@ -148,29 +148,6 @@ QasBandWidthBox :: handle_value_changed(int value)
 	valueChanged(value);
 }
 
-QasMidilevelBox :: QasMidilevelBox()
-{
-	setTitle(QString("MIDI detect level: %1").arg(0));
-
-	grid = new QGridLayout(this);
-
-	pSB = new QScrollBar(Qt::Horizontal);
-
-	pSB->setRange(0, QasBand::BAND_MAX - 1);
-	pSB->setSingleStep(1);
-	pSB->setValue(0);
-	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
-
-	grid->addWidget(pSB, 0,0,1,1);
-}
-
-void
-QasMidilevelBox :: handle_value_changed(int value)
-{
-	setTitle(QString("MIDI detect level: %1").arg(value));
-	valueChanged(value);
-}
-
 QasNoiselevelBox :: QasNoiselevelBox()
 {
 	setTitle(QString("Noise level: %1").arg(-64));
@@ -215,7 +192,6 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 
 	bp_box_0 = new QasBandPassBox();
 	bw_box_0 = new QasBandWidthBox();
-	ml_box_0 = new QasMidilevelBox();
 	nl_box_0 = new QasNoiselevelBox();
 	handle_filter_0(0);
 
@@ -225,7 +201,6 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
 	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
 	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
-	connect(ml_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
 	connect(nl_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
 
 	bp_close = new QPushButton(tr("Close"));
@@ -238,7 +213,6 @@ QasConfig :: QasConfig(QasMainWindow *_mw)
 	gl->addWidget(bp_box_0, 0,1,1,1);
 	gl->addWidget(bw_box_0, 1,1,1,1);
 	gl->addWidget(nl_box_0, 2,1,1,1);
-	gl->addWidget(ml_box_0, 3,1,1,1);
 	gl->addWidget(bp_close, 4,0,1,2);
 
 	setWindowTitle(tr(QAS_WINDOW_TITLE));
@@ -281,7 +255,7 @@ QasView :: QasView(QasMainWindow *_mw)
 
 	gl = new QGridLayout(this);
 
-	map_decay_0 = new QasButtonMap("Decay selection\0"
+	map_decay_0 = new QasButtonMap("Correlation decay selection\0"
 				       "OFF\0" "1/8\0" "1/16\0" "1/32\0"
 				       "1/64\0" "1/128\0" "1/256\0", 7, 4);
 
@@ -360,7 +334,6 @@ QasConfig :: handle_filter_0(int value)
 	double temp[QAS_CORR_SIZE];
 	double adjust = bw_box_0->pSB->value() / 2.0;
 	double center = bp_box_0->pSB->value();
-	int midiLevel = ml_box_0->pSB->value();
 	int noiseLevel = nl_box_0->pSB->value();
 
 	memset(temp, 0, sizeof(temp));
@@ -369,7 +342,6 @@ QasConfig :: handle_filter_0(int value)
 	atomic_lock();
 	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
-	qas_midi_level = midiLevel * midiLevel;
 	qas_noise_level = pow(2.0, noiseLevel / 16.0);
 	atomic_unlock();
 }
@@ -430,6 +402,7 @@ QasBand :: getFullText(int ypos)
 	ssize_t real_offset;
 	ssize_t real_band;
 	size_t y;
+	double level = 1U << qas_sensitivity;
 
 	if (ho < 0)
 		ho = 0;
@@ -441,7 +414,8 @@ QasBand :: getFullText(int ypos)
 	for (size_t x = y = 0; x != wi; x++) {
 		if (band[3 * x] > band[3 * y])
 			y = x;
-		if (band[3 * x] > 0.0) {
+
+		if (band[3 * x] >= level) {
 			size_t offset = band[3 * x + 2];
 			size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
 
@@ -453,7 +427,7 @@ QasBand :: getFullText(int ypos)
 		for (size_t x = 0; x != wi; x++) {
 			if (band[3 * x] == 0.0)
 				continue;
-			if (band[3 * x] >= qas_midi_level) {
+			if (band[3 * x] >= level) {
 				size_t offset = band[3 * x + 2];
 				size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
 				qas_midi_key_send(0, key, 90, 0);
@@ -464,7 +438,7 @@ QasBand :: getFullText(int ypos)
 		for (size_t x = 0; x != wi; x++) {
 			if (band[3 * x] == 0.0)
 				continue;
-			if (band[3 * x] >= qas_midi_level) {
+			if (band[3 * x] >= level) {
 				size_t offset = band[3 * x + 2];
 				size_t key = 9 + (offset + (QAS_WAVE_STEP / 2)) / QAS_WAVE_STEP;
 				qas_midi_key_send(0, key, 0, 0);
@@ -522,6 +496,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	size_t hi;
 	ssize_t real_band = 0;
 	ssize_t real_offset;
+	double level = 1U << qas_sensitivity;
 
 	if (w == 0 || h == 0)
 		return;
@@ -556,14 +531,16 @@ QasBand :: paintEvent(QPaintEvent *event)
 		for (size_t x = 0; x != BAND_MAX; x++) {
 			double value = band[3 * x];
 
-			int level = (value / max) * 255.0;
+			if (value < level)
+				continue;
 
-			if (level > 255)
-				level = 255;
-			else if (level < 0)
-				level = 0;
+			int bright = (value / max) * 255.0;
+			if (bright > 255)
+				bright = 255;
+			else if (bright < 0)
+				bright = 0;
 
-			QColor hc(255 - level, 255 - level, 255 - level, 255);
+			QColor hc(255 - bright, 255 - bright, 255 - bright, 255);
 			size_t yo = hi - 1 - y;
 			accu.setPixelColor(x, yo, hc);
 		}
@@ -595,14 +572,13 @@ QasBand :: paintEvent(QPaintEvent *event)
 QString
 QasGraph :: getText(QMouseEvent *event)
 {
-	int graph = (4 * event->y()) / height();
+	int graph = (3 * event->y()) / height();
 	int band;
 	int key;
 
 	switch (graph) {
 	case 0:
 	case 1:
-	case 3:
 		band = (qas_num_bands * event->x()) / width();
 		if (band > -1 && band < (int)qas_num_bands) {
 			band -= band % QAS_WAVE_STEP;
@@ -642,7 +618,7 @@ QasGraph :: mouseMoveEvent(QMouseEvent *event)
 	setToolTip(getText(event));
 }
 
-double
+static double
 QasReference(double a, double b, double c)
 {
 	double max;
@@ -654,7 +630,7 @@ QasReference(double a, double b, double c)
 	else
 		max = c;
 
-	return ((double)qas_sensitivity * (a + b + c - max) / 4.0);
+	return (max);
 }
 
 void
@@ -666,7 +642,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	size_t wi = qas_display_width() / 3;
 	size_t hi;
 	size_t hg = h / 6 + 1;
-	size_t rg = h / 4 + 1;
+	size_t rg = h / 3 + 1;
 	size_t wc = qas_window_size;
 	double corr_max_power;
 	size_t corr_max_off;
@@ -680,18 +656,15 @@ QasGraph :: paintEvent(QPaintEvent *event)
 
 	QImage hist(wi, hi, QImage::Format_ARGB32);
 	QImage power(wi, hg, QImage::Format_ARGB32);
-	QImage phase(wi, hg, QImage::Format_ARGB32);
 	QImage corr(w, hg, QImage::Format_ARGB32);
 
 	QColor transparent = QColor(0,0,0,0);
-	QColor phase_c = QColor(192,192,0,255);
 	QColor corr_c = QColor(255,0,0,255);
 	QColor white(255,255,255);
 	QColor black(0,0,0);
 
 	hist.fill(white);
 	power.fill(transparent);
-	phase.fill(transparent);
 	corr.fill(transparent);
 
 	double mon_sum = 0.0;
@@ -769,7 +742,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 				  QColor(0,0,0,255) : QColor(127,127,127,255);
 
 				double power_new = data[3 * x];
-				double phase_new = data[3 * x + 1];
 
 				int power_y = (double)(power_new / max) * (hg - 1);
 				if (power_y < 0)
@@ -778,14 +750,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 					power_y = (int)(hg - 1);
 				for (int n = 0; n != power_y; n++)
 					power.setPixelColor(x, hg - 1 - n, power_c);
-
-				int phase_y = (double)(phase_new / (2.0 * M_PI)) * (hg - 1);
-				if (phase_y < 0)
-					phase_y = 0;
-				else if (phase_y > (int)(hg - 1))
-					phase_y = (int)(hg - 1);
-				for (int n = 0; n != phase_y; n++)
-					phase.setPixelColor(x, hg - 1 - n, phase_c);
 			}
 		}
 		for (size_t x = 0; x != wi; x++) {
@@ -811,10 +775,9 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setRenderHints(QPainter::Antialiasing|
 			     QPainter::TextAntialiasing);
 
-	paint.drawImage(QRect(0,3*rg,w,rg), hist);
+	paint.drawImage(QRect(0,rg,w,rg), hist);
 	paint.drawImage(QRect(0,2*rg,w,rg), corr);
 	paint.drawImage(QRect(0,0,w,rg), power);
-	paint.drawImage(QRect(0,rg,w,rg), phase);
 
 	/* fill any gaps */
 	paint.setPen(QPen(black,0));
@@ -841,11 +804,6 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setPen(QPen(black,0));
 	paint.setBrush(black);
 	paint.drawText(QPoint(0,32),str);
-
-	str = "PHASE";
-	paint.setPen(QPen(phase_c,0));
-	paint.setBrush(phase_c);
-	paint.drawText(QPoint(6*16,32),str);
 
 	str = "CORRELATION ";
 	str += corr_sign;
@@ -968,7 +926,7 @@ QasMainWindow :: QasMainWindow()
 	connect(tuning, SIGNAL(valueChanged(int)), this, SLOT(handle_tuning()));
 
 	sensitivity = new QSlider();
-	sensitivity->setRange(0, 16);
+	sensitivity->setRange(0, 31);
 	sensitivity->setValue(0);
 	sensitivity->setToolTip("Sensitivity");
 	sensitivity->setOrientation(Qt::Horizontal);

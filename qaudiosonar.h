@@ -112,22 +112,6 @@ public slots:
 	void handle_value_changed(int);
 };
 
-class QasMidilevelBox : public QGroupBox {
-	Q_OBJECT;
-public:
-	QasMidilevelBox();
-	~QasMidilevelBox() {};
-
-	QScrollBar *pSB;
-	QGridLayout *grid;
-
-signals:
-	void valueChanged(int);
-
-public slots:
-	void handle_value_changed(int);
-};
-
 class QasNoiselevelBox : public QGroupBox {
 	Q_OBJECT;
 public:
@@ -162,7 +146,6 @@ public:
 	QasButtonMap *map_output_1;
 	QasBandPassBox *bp_box_0;
 	QasBandWidthBox *bw_box_0;
-	QasMidilevelBox *ml_box_0;
 	QasNoiselevelBox *nl_box_0;
 	QPushButton *bp_close;
 
@@ -306,8 +289,6 @@ void atomic_graph_unlock();
 void atomic_wait();
 void atomic_wakeup();
 
-double QasReference(double a, double b, double c);
-
 /* ============== MULTIPLY SUPPORT ============== */
 
 void qas_x3_multiply_double(double *, double *, double *, const size_t);
@@ -419,7 +400,6 @@ extern void qas_dsp_sync(void);
 /* ============== MIDI SUPPORT ============== */
 
 extern char midi_write_device[1024];
-extern double qas_midi_level;
 extern double qas_noise_level;
 
 extern void qas_midi_init();
