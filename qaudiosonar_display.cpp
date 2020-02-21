@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2018-2020 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -183,7 +183,7 @@ qas_display_worker(void *arg)
 
 	while (1) {
 		struct qas_wave_job *pjob;
-		struct qas_corr_out_data *pcorr;
+		struct qas_corr_data *pcorr;
 		double *data;
 		double *band;
 
@@ -204,11 +204,11 @@ qas_display_worker(void *arg)
 		case QAS_STATE_2ND_SCAN:
 		case QAS_STATE_3RD_SCAN:
 			off = 3 * (pjob->band_start / QAS_WAVE_STEP);
-			p_value = pcorr->data_array + pjob->data_offset;
+			p_value = pcorr->band_data + (pjob->band_start / QAS_WAVE_STEP);
 
 			/* collect a data point */
 			data[off + 0] = p_value[0];
-			data[off + 1] = p_value[1];
+			data[off + 1] = 0;
 			data[off + 2] = pjob->band_start;
 			break;
 		}
@@ -224,7 +224,7 @@ qas_display_worker(void *arg)
 		size_t y;
 		case QAS_STATE_1ST_SCAN:
 			for (size_t x = 0; x != table_size; x++) {
-				table[x].value = pcorr->data_array[pcorr->data_size + 2 * x];
+				table[x].value = pcorr->band_data[x];
 				table[x].band = x;
 			}
 			mergesort(table, table_size, sizeof(table[0]), &qas_table_compare);
@@ -241,19 +241,16 @@ qas_display_worker(void *arg)
 			pcorr->refcount += 3;
 			
 			pjob = qas_wave_job_alloc();
-			pjob->data_offset = pcorr->data_size + (2 * y);
 			pjob->band_start = y * QAS_WAVE_STEP;
 			pjob->data = pcorr;
 			qas_wave_job_insert(pjob);
 
 			pjob = qas_wave_job_alloc();
-			pjob->data_offset = pcorr->data_size + (2 * (y - 1));
 			pjob->band_start = (y - 1) * QAS_WAVE_STEP;
 			pjob->data = pcorr;
 			qas_wave_job_insert(pjob);
 
 			pjob = qas_wave_job_alloc();
-			pjob->data_offset = pcorr->data_size + (2 * (y + 1));
 			pjob->band_start = (y + 1) * QAS_WAVE_STEP;
 			pjob->data = pcorr;
 			qas_wave_job_insert(pjob);
@@ -276,7 +273,6 @@ qas_display_worker(void *arg)
 			/* generate jobs for output data */
 			for (size_t x = 0; x != qas_num_bands; x += QAS_WAVE_STEP) {
 				pjob = qas_wave_job_alloc();
-				pjob->data_offset = pcorr->data_size + (2 * (x / QAS_WAVE_STEP));
 				pjob->band_start = x + y;
 				pjob->data = pcorr;
 				qas_wave_job_insert(pjob);
@@ -285,7 +281,7 @@ qas_display_worker(void *arg)
 
 		case QAS_STATE_3RD_SCAN:
 			qas_display_worker_done(data, band);
-			qas_corr_out_free(pcorr);
+			qas_corr_free(pcorr);
 
 			atomic_lock();
 			qas_out_sequence_number++;

@@ -40,11 +40,11 @@ double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_midi_level = 0;
 double qas_noise_level = 1.0;
 double qas_view_decay = 0;
+size_t qas_mon_size;
 
 static struct dsp_buffer qas_read_buffer[2];
 static struct dsp_buffer qas_write_buffer[2];
 static double *qas_mon_buffer;
-static size_t qas_mon_size;
 static size_t qas_mon_level;
 
 void
@@ -261,26 +261,25 @@ qas_dsp_audio_analyzer(void *arg)
 		qas_mon_level += QAS_CORR_SIZE;
 		qas_mon_level %= qas_mon_size;
 
-		struct qas_corr_in_data *pin =
-		    qas_corr_in_alloc(qas_mon_size + QAS_CORR_SIZE);
+		struct qas_corr_data *ptr = qas_corr_alloc();
 
 		atomic_lock();
-		pin->sequence_number = qas_in_sequence_number++;
+		ptr->sequence_number = qas_in_sequence_number++;
 		atomic_unlock();
 
 		atomic_graph_lock();
 		for (size_t x = 0; x != qas_mon_size; x += QAS_CORR_SIZE) {
 			size_t y = (x + qas_mon_level) % qas_mon_size;
-			memcpy(pin->data + x, qas_mon_buffer + y,
+			memcpy(ptr->monitor_data + x, qas_mon_buffer + y,
 			       sizeof(double) * QAS_CORR_SIZE);
 		}
 		atomic_graph_unlock();
 
 		/* compute reversed audio samples */
 		for (size_t x = 0; x != QAS_CORR_SIZE; x++)
-			pin->data[qas_mon_size + x] = dsp_rd_audio[QAS_CORR_SIZE - 1 - x];
+			ptr->input_data[x] = dsp_rd_audio[QAS_CORR_SIZE - 1 - x];
 
-		qas_corr_in_insert(pin);
+		qas_corr_insert(ptr);
 	}
 	return (0);
 }

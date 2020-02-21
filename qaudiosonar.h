@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2019 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2020 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -297,6 +297,7 @@ extern double qas_view_decay;
 extern QasMainWindow *qas_mw;
 extern double qas_low_octave;
 extern const double qas_base_freq;
+extern size_t qas_mon_size;
 
 void atomic_lock();
 void atomic_unlock();
@@ -322,9 +323,8 @@ extern QString *qas_descr_table;
 
 struct qas_wave_job {
 	TAILQ_ENTRY(qas_wave_job) entry;
-	size_t data_offset;
 	size_t band_start;
-	struct qas_corr_out_data *data;
+	struct qas_corr_data *data;
 };
 
 extern struct qas_wave_job *qas_wave_job_alloc();
@@ -341,31 +341,26 @@ extern void qas_wave_init();
 
 #define	QAS_CORR_SIZE QAS_MUL_SIZE
 
-struct qas_corr_in_data {
-	TAILQ_ENTRY(qas_corr_in_data) entry;
-	size_t sequence_number;
-	double data[];
-};
-
-struct qas_corr_out_data {
-	TAILQ_ENTRY(qas_corr_in_data) entry;
+struct qas_corr_data {
+	TAILQ_ENTRY(qas_corr_data) entry;
 	size_t sequence_number;
 	size_t refcount;
 	size_t state;
-	size_t data_size;
 #define	QAS_STATE_1ST_SCAN 0
 #define	QAS_STATE_2ND_SCAN 1
 #define	QAS_STATE_3RD_SCAN 2
-	double data_array[];
+	double *monitor_data;
+	double *input_data;
+	double *corr_data;
+	double *band_data;
+	double internal_data[];
 };
 
 extern double *qas_mon_decay;
-extern struct qas_corr_in_data *qas_corr_in_alloc(size_t);
-extern void qas_corr_in_free(struct qas_corr_in_data *);
-extern struct qas_corr_out_data *qas_corr_out_alloc(size_t);
-extern void qas_corr_out_free(struct qas_corr_out_data *);
-extern void qas_corr_in_insert(struct qas_corr_in_data *);
-extern struct qas_corr_in_data *qas_corr_in_job_dequeue();
+extern struct qas_corr_data *qas_corr_alloc(void);
+extern void qas_corr_free(struct qas_corr_data *);
+extern void qas_corr_insert(struct qas_corr_data *);
+extern struct qas_corr_data *qas_corr_job_dequeue();
 extern void qas_corr_signal();
 extern void qas_corr_wait();
 extern void qas_corr_lock();

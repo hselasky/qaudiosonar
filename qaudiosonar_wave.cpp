@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2018 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2018-2020 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -109,11 +109,9 @@ qas_wave_analyze(const double *indata, double k_cos, double k_sin, double *out)
 	double n_cos;
 	double n_sin;
 
-	indata += qas_window_size + QAS_CORR_SIZE;
-
-	for (size_t x = 0; x != qas_window_size; x++, indata--) {
-		cos_in += t_cos * indata[0];
-		sin_in += t_sin * indata[0];
+	for (size_t x = 0; x != qas_mon_size; x++) {
+		cos_in += t_cos * indata[x];
+		sin_in += t_sin * indata[x];
 
 		/* compute next step by complex multiplication */
 		n_cos = t_cos * k_cos - t_sin * k_sin;
@@ -126,44 +124,14 @@ qas_wave_analyze(const double *indata, double k_cos, double k_sin, double *out)
 	sin_in /= (double)qas_window_size * 0.5;
 
 	out[0] = sqrt(cos_in * cos_in + sin_in * sin_in);
-	if (out[0] < 1.0) {
+	if (out[0] < 1.0)
 		out[0] = 1.0;
-		out[1] = 0.0;
-	} else {
-		uint8_t pol = ((cos_in < 0) ? 2 : 0) | ((sin_in < 0) ? 1 : 0);
-
-		out[1] = acos(fabs(cos_in) / out[0]);
-
-		switch (pol) {
-		case 0:
-			break;
-		case 1:
-			out[1] = -out[1];
-			break;
-		case 2:
-			out[1] = -M_PI - out[1];
-			break;
-		case 3:
-			out[1] = -M_PI + out[1];
-			break;
-		default:
-			break;
-		}
-
-		out[1] += M_PI;
-		if (out[1] < 0.0)
-			out[1] += 2.0 * M_PI;
-		if (out[1] >= 2.0 * M_PI)
-			out[1] -= 2.0 * M_PI;
-
-		out[0] = sqrt(out[0]);
-	}
 }
 
 static size_t
 qas_wave_analyze_binary_search(const double *indata, double *out, size_t band, size_t rem)
 {
-	double temp[2];
+	double temp[1];
 	size_t pos = 0;
 
 	/* find maximum amplitude */
@@ -190,27 +158,27 @@ qas_wave_worker(void *arg)
 
 		switch (pjob->data->state) {
 		case QAS_STATE_1ST_SCAN:
-			qas_wave_analyze(pjob->data->data_array,
+			qas_wave_analyze(pjob->data->monitor_data,
 			    qas_cos_table[pjob->band_start],
 			    qas_sin_table[pjob->band_start],
-			    pjob->data->data_array + pjob->data_offset);
+			    pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP));
 			break;
 		case QAS_STATE_2ND_SCAN:
 			pjob->band_start +=
-			    qas_wave_analyze_binary_search(pjob->data->data_array,
-			        pjob->data->data_array + pjob->data_offset,
+			    qas_wave_analyze_binary_search(pjob->data->monitor_data,
+			        pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP),
 			        pjob->band_start, QAS_WAVE_STEP / 2);
 			break;
 		case QAS_STATE_3RD_SCAN:
-			qas_wave_analyze(pjob->data->data_array,
+			qas_wave_analyze(pjob->data->monitor_data,
 			    qas_cos_table[pjob->band_start],
 			    qas_sin_table[pjob->band_start],
-			    pjob->data->data_array + pjob->data_offset);
+			    pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP));
 			break;
 		}
 		qas_display_job_insert(pjob);
 	}
-	return 0;
+	return (0);
 }
 
 const double qas_base_freq = 440.0;	/* A-key in Hz */
@@ -248,7 +216,7 @@ qas_wave_init()
 
 	for (size_t x = 0; x != qas_num_bands; x++) {
 		const char *map[12] = {
-			"A%1", "H%1B", "H%1", "C%1",
+			"A%1", "B%1B", "B%1", "C%1",
 			"D%1B", "D%1", "E%1B", "E%1",
 			"F%1", "G%1B", "G%1", "A%1B"
 		};
