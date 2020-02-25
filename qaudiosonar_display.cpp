@@ -141,6 +141,7 @@ qas_display_worker(void *arg)
 	while (1) {
 		struct qas_wave_job *pjob;
 		struct qas_corr_data *pcorr;
+		const double *data_old;
 		double *data;
 		double *band;
 
@@ -212,7 +213,6 @@ qas_display_worker(void *arg)
 			break;
 
 		case QAS_STATE_2ND_SCAN:
-
 			/* find largest value */
 			for (size_t x = y = 0; x != table_size; x++) {
 				if (data[3 * x + 0] > data[3 * y + 0])
@@ -237,6 +237,14 @@ qas_display_worker(void *arg)
 		case QAS_STATE_3RD_SCAN:
 			qas_display_worker_done(data, band);
 			qas_corr_free(pcorr);
+
+			data_old = qas_display_get_line(pcorr->sequence_number - 1);
+
+			atomic_graph_lock();
+			for (size_t x = 0; x != table_size; x++) {
+				data[3 * x] += data_old[3 * x] * qas_view_decay;
+			}
+			atomic_graph_unlock();
 
 			atomic_lock();
 			qas_out_sequence_number++;

@@ -255,7 +255,7 @@ QasView :: QasView(QasMainWindow *_mw)
 
 	gl = new QGridLayout(this);
 
-	map_decay_0 = new QasButtonMap("Correlation decay selection\0"
+	map_decay_0 = new QasButtonMap("Decay selection\0"
 				       "OFF\0" "1/8\0" "1/16\0" "1/32\0"
 				       "1/64\0" "1/128\0" "1/256\0", 7, 4);
 
