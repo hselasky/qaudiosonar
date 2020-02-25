@@ -37,7 +37,6 @@ int	qas_record;
 PaDeviceIndex qas_rx_device = paNoDevice;
 PaDeviceIndex qas_tx_device = paNoDevice;
 double qas_band_pass_filter[QAS_CORR_SIZE];
-double qas_midi_level = 0;
 double qas_noise_level = 1.0;
 double qas_view_decay = 0;
 size_t qas_mon_size;
