@@ -225,6 +225,10 @@ public:
 		return QString("PortAudio #%1").arg(index);
 	};
 
+	void closeEvent (QCloseEvent *event) {
+		QCoreApplication::exit();
+	};
+
 	QasConfig *qc;
 	QasView *qv;
 	QGridLayout *gl;
