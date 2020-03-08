@@ -169,12 +169,6 @@ qas_wave_worker(void *arg)
 			        pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP),
 			        pjob->band_start, QAS_WAVE_STEP / 2);
 			break;
-		case QAS_STATE_3RD_SCAN:
-			qas_wave_analyze(pjob->data->monitor_data,
-			    qas_cos_table[pjob->band_start],
-			    qas_sin_table[pjob->band_start],
-			    pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP));
-			break;
 		}
 		qas_display_job_insert(pjob);
 	}

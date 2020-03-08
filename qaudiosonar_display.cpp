@@ -159,7 +159,6 @@ qas_display_worker(void *arg)
 			size_t off;
 		case QAS_STATE_1ST_SCAN:
 		case QAS_STATE_2ND_SCAN:
-		case QAS_STATE_3RD_SCAN:
 			off = 3 * (pjob->band_start / QAS_WAVE_STEP);
 
 			/* collect a data point */
@@ -213,31 +212,6 @@ qas_display_worker(void *arg)
 			break;
 
 		case QAS_STATE_2ND_SCAN:
-			/* find largest value */
-			for (size_t x = y = 0; x != table_size; x++) {
-				if (data[3 * x + 0] > data[3 * y + 0])
-					y = x;
-			}
-
-			/* get remainder of band */
-			y = data[3 * y + 2];
-			y %= QAS_WAVE_STEP;
-
-			pcorr->refcount = qas_num_bands / QAS_WAVE_STEP;
-
-			/* generate jobs for output data */
-			for (size_t x = 0; x != qas_num_bands; x += QAS_WAVE_STEP) {
-				pjob = qas_wave_job_alloc();
-				pjob->band_start = x + y;
-				pjob->data = pcorr;
-				qas_wave_job_insert(pjob);
-			}
-			break;
-
-		case QAS_STATE_3RD_SCAN:
-			qas_display_worker_done(data, band);
-			qas_corr_free(pcorr);
-
 			data_old = qas_display_get_line(pcorr->sequence_number - 1);
 
 			atomic_graph_lock();
@@ -246,6 +220,9 @@ qas_display_worker(void *arg)
 			}
 			atomic_graph_unlock();
 
+			qas_display_worker_done(data, band);
+			qas_corr_free(pcorr);
+			
 			atomic_lock();
 			qas_out_sequence_number++;
 			atomic_unlock();

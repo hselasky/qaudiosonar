@@ -329,7 +329,6 @@ struct qas_corr_data {
 	size_t state;
 #define	QAS_STATE_1ST_SCAN 0
 #define	QAS_STATE_2ND_SCAN 1
-#define	QAS_STATE_3RD_SCAN 2
 	double *monitor_data;
 	double *input_data;
 	double *corr_data;
