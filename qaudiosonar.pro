@@ -7,6 +7,7 @@ HEADERS         += qaudiosonar_buttonmap.h
 SOURCES         += qaudiosonar.cpp
 SOURCES		+= qaudiosonar_button.cpp
 SOURCES		+= qaudiosonar_buttonmap.cpp
+SOURCES		+= qaudiosonar_ftt.cpp
 SOURCES		+= qaudiosonar_iso.cpp
 SOURCES		+= qaudiosonar_midi.cpp
 SOURCES		+= qaudiosonar_mul.cpp

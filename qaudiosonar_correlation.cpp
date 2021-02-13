@@ -117,8 +117,6 @@ qas_corr_worker(void *arg)
 
 		ptr = qas_corr_job_dequeue();
 
-		ptr->refcount = qas_num_bands / QAS_WAVE_STEP;
-
 		/* do correlation */
 		for (size_t x = 0; x != qas_mon_size; x += QAS_CORR_SIZE) {
 			qas_x3_multiply_double(ptr->monitor_data + x,
@@ -133,13 +131,14 @@ qas_corr_worker(void *arg)
 		}
 		atomic_graph_unlock();
 
-		/* generate jobs for output data */
-		for (size_t band = 0; band != qas_num_bands; band += QAS_WAVE_STEP) {
-			pjob = qas_wave_job_alloc();
-			pjob->band_start = band;
-			pjob->data = ptr;
-			qas_wave_job_insert(pjob);
-		}
+		/* set refcount */
+		ptr->refcount = 1;
+
+		/* generate job for output data */
+		pjob = qas_wave_job_alloc();
+		pjob->band_start = 0;
+		pjob->data = ptr;
+		qas_wave_job_insert(pjob);
 	}
 	return (0);
 }

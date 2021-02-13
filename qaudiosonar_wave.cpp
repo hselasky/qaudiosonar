@@ -100,30 +100,60 @@ qas_wave_unlock()
 }
 
 static void
+qas_ftt_analyze(const double *indata, double *out)
+{
+	uint8_t log2_size;
+
+	for (log2_size = 0; (1U << log2_size) < qas_window_size; log2_size++)
+		;
+
+	qas_complex_t temp[1U << log2_size];
+	memset(temp, 0, sizeof(temp));
+
+	for (size_t x = 0; x != qas_window_size; x++)
+		temp[x].x = indata[x];
+
+	qas_ftt_inv(temp, log2_size);
+
+	const size_t nout = (qas_num_bands / QAS_WAVE_STEP);
+
+	memset(out, 0, sizeof(out[0]) * nout);
+
+	size_t y = 0;
+
+	for (size_t x = 1; x != qas_window_size; x++) {
+		const double amp = (fabs(temp[x].x) + fabs(temp[x].y)) /
+		    ((double)qas_window_size * 0.5);
+		const double freq = (double)x *
+		    (double)qas_sample_rate / (double)(1U << log2_size);
+
+		while (y != nout && freq > qas_freq_table[y * QAS_WAVE_STEP])
+			y++;
+
+		if (y != nout) {
+			if (out[y] < amp)
+				out[y] = amp;
+		}
+	}
+}
+
+static void
 qas_wave_analyze(const double *indata, double k_cos, double k_sin, double *out)
 {
+	const qas_complex_t m = {k_cos, k_sin};
+	qas_complex_t t = {1.0, 0.0};
 	double cos_in = 0;
 	double sin_in = 0;
-	double t_cos = 1.0;
-	double t_sin = 0.0;
-	double n_cos;
-	double n_sin;
 
-	for (size_t x = 0; x != qas_mon_size; x++) {
-		cos_in += t_cos * indata[x];
-		sin_in += t_sin * indata[x];
+	for (size_t x = 0; x != qas_window_size; x++) {
+		cos_in += t.x * indata[x];
+		sin_in += t.y * indata[x];
 
 		/* compute next step by complex multiplication */
-		n_cos = t_cos * k_cos - t_sin * k_sin;
-		n_sin = t_cos * k_sin + t_sin * k_cos;
-		t_cos = n_cos;
-		t_sin = n_sin;
+		t = qas_ftt_multiply(t, m);
 	}
 
-	cos_in /= (double)qas_window_size * 0.5;
-	sin_in /= (double)qas_window_size * 0.5;
-
-	out[0] = sqrt(cos_in * cos_in + sin_in * sin_in);
+	out[0] = (fabs(cos_in) + fabs(sin_in)) / ((double)qas_window_size * 0.5);
 	if (out[0] < 1.0)
 		out[0] = 1.0;
 }
@@ -133,6 +163,9 @@ qas_wave_analyze_binary_search(const double *indata, double *out, size_t band, s
 {
 	double temp[1];
 	size_t pos = 0;
+
+	qas_wave_analyze(indata, qas_cos_table[band + pos],
+	    qas_sin_table[band + pos], out);
 
 	/* find maximum amplitude */
 	while (rem != 0) {
@@ -158,10 +191,7 @@ qas_wave_worker(void *arg)
 
 		switch (pjob->data->state) {
 		case QAS_STATE_1ST_SCAN:
-			qas_wave_analyze(pjob->data->monitor_data,
-			    qas_cos_table[pjob->band_start],
-			    qas_sin_table[pjob->band_start],
-			    pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP));
+			qas_ftt_analyze(pjob->data->monitor_data, pjob->data->band_data);
 			break;
 		case QAS_STATE_2ND_SCAN:
 			pjob->band_start +=
@@ -239,9 +269,10 @@ qas_wave_init()
 				y |= 1;
 			qas_descr_table[x] += QString(".%1").arg(y);
 		}
-		double r = 2.0 * M_PI * qas_freq_table[x] / (double)qas_sample_rate;
-		qas_cos_table[x] = cos(r);
-		qas_sin_table[x] = sin(r);
+
+		const double r = qas_freq_table[x] / (double)qas_sample_rate;
+		qas_cos_table[x] = qas_ftt_cos(r);
+		qas_sin_table[x] = qas_ftt_sin(r);
 	}
 
 	for (int i = 0; i != qas_num_workers; i++) {

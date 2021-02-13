@@ -409,4 +409,19 @@ extern void qas_midi_init();
 extern void qas_midi_key_send(uint8_t, uint8_t, uint8_t, uint8_t);
 extern void qas_midi_delay_send(uint8_t);
 
+/* ============== FTT SUPPORT ============== */
+
+typedef struct {
+	double x;
+	double y;
+} qas_complex_t;
+
+extern void qas_ftt_inv(qas_complex_t *, uint8_t);
+extern void qas_ftt_fwd(qas_complex_t *, uint8_t);
+extern double qas_ftt_cos(double);
+extern double qas_ftt_sin(double);
+extern qas_complex_t qas_ftt_multiply(qas_complex_t, qas_complex_t);
+extern qas_complex_t qas_ftt_add(qas_complex_t, qas_complex_t);
+extern qas_complex_t qas_ftt_sub(qas_complex_t, qas_complex_t);
+
 #endif			/* _QAUDIOSONAR_H_ */
