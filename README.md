@@ -1,3 +1,4 @@
+<IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/qaudiosonar_128x128.png"></IMG>
 # Quick Audio Sonar v1.7.2
 
 Quick Audio Sonar is the software you need to tune your professional
@@ -39,6 +40,7 @@ git clone https://github.com/hselasky/qaudiosonar.git
 
 # Supported platforms
 - FreeBSD (<a HREF="http://www.freshports.org/audio/qaudiosonar">See Ports</a>)
+- MacOSX (<a HREF="https://apps.apple.com/us/app/quick-audio-sonar/id1473157802?mt=12">See App-Store</a>)
 
 # Privacy policy
 Quick Audio Sonar does not collect any information from its users.
