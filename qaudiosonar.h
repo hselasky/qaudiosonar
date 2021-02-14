@@ -61,7 +61,7 @@
 #include <QImage>
 #include <QSlider>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.7.2"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.7.3"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
 #define	QAS_SAMPLES_MAX	48000

@@ -26,7 +26,7 @@
 # Makefile for qaudiosonar
 #
 
-VERSION=1.7.2
+VERSION=1.7.3
 PACKAGE=qaudiosonar-${VERSION}
 
 PREFIX?=/usr/local
