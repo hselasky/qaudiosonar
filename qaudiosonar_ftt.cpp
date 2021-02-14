@@ -245,13 +245,14 @@ void
 qas_ftt_fwd(qas_complex_t *ptr, uint8_t log2_size)
 {
 	const uint32_t max = 1U << log2_size;
+	const double invmax = 1.0 / max;
 	qas_complex_t t[2];
 	uint32_t y;
 	uint32_t z;
 
 	for (uint32_t step = max; (step /= 2);) {
 		for (y = z = 0; y != max; y += 2 * step) {
-			const double angle = (double)z / (double)max;
+			const double angle = z * invmax;
 
 			/* do transform */
 			for (uint32_t x = 0; x != step; x++) {
@@ -285,6 +286,7 @@ void
 qas_ftt_inv(qas_complex_t *ptr, uint8_t log2_size)
 {
 	const uint32_t max = 1U << log2_size;
+	const double invmax = 1.0 / max;
 	qas_complex_t t[2];
 	uint32_t y;
 	uint32_t z;
@@ -302,7 +304,7 @@ qas_ftt_inv(qas_complex_t *ptr, uint8_t log2_size)
 
 	for (uint32_t step = 1; step != max; step *= 2) {
 		for (y = z = 0; y != max; y += 2 * step) {
-			const double angle = (double)(max - z) / (double)max;
+			const double angle = (max - z) * invmax;
 
 			/* do transform */
 			for (uint32_t x = 0; x != step; x++) {
