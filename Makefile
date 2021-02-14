@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2019-2020 Hans Petter Selasky. All rights reserved.
+# Copyright (c) 2019-2021 Hans Petter Selasky. All rights reserved.
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions
@@ -26,9 +26,6 @@
 # Makefile for qaudiosonar
 #
 
-VERSION=1.7.3
-PACKAGE=qaudiosonar-${VERSION}
-
 PREFIX?=/usr/local
 
 all: Makefile.unix
@@ -38,29 +35,10 @@ Makefile.unix: qaudiosonar.pro
 	qmake PREFIX=${PREFIX} -o Makefile.unix qaudiosonar.pro
 
 help:
-	@echo "Targets are: all, install, clean, package, help"
+	@echo "Targets are: all, install, clean, help"
 
 install: Makefile.unix
 	make -f Makefile.unix install
 
 clean: Makefile.unix
 	make -f Makefile.unix clean
-
-package: clean
-	tar -cvf ${PACKAGE}.tar \
-		Makefile \
-		qaudiosonar*.pro \
-		qaudiosonar*.qrc \
-		qaudiosonar*.cpp \
-		qaudiosonar*.h \
-		qaudiosonar*.png \
-		qaudiosonar*.desktop \
-		qaudiosonar.entitlements \
-		qaudiosonar*.plist \
-		qaudiosonar*.icns
-
-	rm -rf ${PACKAGE}
-	mkdir ${PACKAGE}
-	tar -xvf ${PACKAGE}.tar -C ${PACKAGE}
-	rm -rf ${PACKAGE}.tar
-	tar --uid=0 --gid=0 -jcvf ${PACKAGE}.tar.bz2 ${PACKAGE}
