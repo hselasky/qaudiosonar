@@ -30,8 +30,7 @@ static pthread_mutex_t qas_wave_mutex;
 
 static TAILQ_HEAD(,qas_wave_job) qas_wave_head = TAILQ_HEAD_INITIALIZER(qas_wave_head);
 
-double *qas_cos_table;
-double *qas_sin_table;
+double qas_tuning = 1.0;
 double *qas_freq_table;
 QString *qas_descr_table;
 size_t qas_num_bands;
@@ -100,44 +99,6 @@ qas_wave_unlock()
 }
 
 static void
-qas_ftt_analyze(const double *indata, double *out)
-{
-	uint8_t log2_size;
-
-	for (log2_size = 0; (1U << log2_size) < qas_window_size; log2_size++)
-		;
-
-	qas_complex_t temp[1U << log2_size];
-	memset(temp, 0, sizeof(temp));
-
-	for (size_t x = 0; x != qas_window_size; x++)
-		temp[x].x = indata[x];
-
-	qas_ftt_inv(temp, log2_size);
-
-	const size_t nout = (qas_num_bands / QAS_WAVE_STEP);
-
-	memset(out, 0, sizeof(out[0]) * nout);
-
-	size_t y = 0;
-
-	for (size_t x = 1; x != qas_window_size; x++) {
-		const double amp = (fabs(temp[x].x) + fabs(temp[x].y)) /
-		    ((double)qas_window_size * 0.5);
-		const double freq = (double)x *
-		    (double)qas_sample_rate / (double)(1U << log2_size);
-
-		while (y != nout && freq > qas_freq_table[y * QAS_WAVE_STEP])
-			y++;
-
-		if (y != nout) {
-			if (out[y] < amp)
-				out[y] = amp;
-		}
-	}
-}
-
-static void
 qas_wave_analyze(const double *indata, double delta_phase, double *out)
 {
 	double phase = 0.0;
@@ -162,14 +123,11 @@ qas_wave_analyze_binary_search(const double *indata, double *out, size_t band, s
 	double temp[1];
 	size_t pos = 0;
 
-	dp = qas_freq_table[band + pos] / (double)qas_sample_rate;
-	qas_wave_analyze(indata, dp, out);
-
 	/* find maximum amplitude */
 	while (rem != 0) {
 		pos |= rem;
 
-		dp = qas_freq_table[band + pos] / (double)qas_sample_rate;
+		dp = qas_tuning * qas_freq_table[band + pos] / (double)qas_sample_rate;
 		qas_wave_analyze(indata, dp, temp);
 		if (out[0] > temp[0])
 			pos &= ~rem;
@@ -190,7 +148,9 @@ qas_wave_worker(void *arg)
 
 		switch (pjob->data->state) {
 		case QAS_STATE_1ST_SCAN:
-			qas_ftt_analyze(pjob->data->monitor_data, pjob->data->band_data);
+			qas_wave_analyze(pjob->data->monitor_data,
+			    qas_tuning * qas_freq_table[pjob->band_start] / (double)qas_sample_rate,
+			    pjob->data->band_data + (pjob->band_start / QAS_WAVE_STEP));
 			break;
 		case QAS_STATE_2ND_SCAN:
 			pjob->band_start +=
@@ -232,8 +192,6 @@ qas_wave_init()
 	qas_low_octave = num_low_octave;
 	qas_num_bands = (size_t)(num_high_octave + num_low_octave) * 12 * QAS_WAVE_STEP;
 
-	qas_cos_table = (double *)malloc(sizeof(double) * qas_num_bands);
-	qas_sin_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_freq_table = (double *)malloc(sizeof(double) * qas_num_bands);
 	qas_descr_table = new QString [qas_num_bands];
 
@@ -268,10 +226,6 @@ qas_wave_init()
 				y |= 1;
 			qas_descr_table[x] += QString(".%1").arg(y);
 		}
-
-		const double r = qas_freq_table[x] / (double)qas_sample_rate;
-		qas_cos_table[x] = qas_ftt_cos(r);
-		qas_sin_table[x] = qas_ftt_sin(r);
 	}
 
 	for (int i = 0; i != qas_num_workers; i++) {

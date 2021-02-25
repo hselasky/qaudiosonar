@@ -1045,15 +1045,7 @@ QasMainWindow :: handle_view()
 void
 QasMainWindow :: handle_tuning()
 {
-	double value = pow(2.0, (double)tuning->value() / 12000.0);
-
-  	for (size_t x = 0; x != qas_num_bands; x++) {
-		qas_freq_table[x] = qas_base_freq * value *
-		    pow(2.0, (double)x / (double)(12 * QAS_WAVE_STEP) - qas_low_octave);
-		double r = 2.0 * M_PI * qas_freq_table[x] / (double)qas_sample_rate;
-		qas_cos_table[x] = cos(r);
-		qas_sin_table[x] = sin(r);
-	}
+	qas_tuning = pow(2.0, (double)tuning->value() / 12000.0);
 }
 
 void

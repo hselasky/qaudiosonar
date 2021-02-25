@@ -158,13 +158,6 @@ qas_display_worker(void *arg)
 		switch (pcorr->state) {
 			size_t off;
 		case QAS_STATE_1ST_SCAN:
-			for (off = 0; off != table_size; off++) {
-				/* collect all data points */
-				data[3 * off + 0] = pcorr->band_data[off];
-				data[3 * off + 1] = 0;
-				data[3 * off + 2] = off * QAS_WAVE_STEP;
-			}
-			break;
 		case QAS_STATE_2ND_SCAN:
 			off = 3 * (pjob->band_start / QAS_WAVE_STEP);
 
