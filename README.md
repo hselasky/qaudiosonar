@@ -1,5 +1,5 @@
 <IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/qaudiosonar_128x128.png"></IMG>
-# Quick Audio Sonar v1.7.2
+# Quick Audio Sonar v1.7.4
 
 Quick Audio Sonar is the software you need to tune your professional
 audio system. Unlike other audio analysis tools Quick Audio Sonar uses
