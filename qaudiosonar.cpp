@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2020 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2021 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -1123,11 +1123,14 @@ main(int argc, char **argv)
 
 	atomic_init();
 
+	/* range check window size */
 	if (qas_window_size == 0)
-		qas_window_size = qas_sample_rate;
+		qas_window_size = QAS_CORR_SIZE;
 	else if (qas_window_size >= (size_t)(16 * qas_sample_rate))
 		qas_window_size = (size_t)(16 * qas_sample_rate);
-	qas_window_size = qas_sample_rate - (qas_sample_rate % QAS_CORR_SIZE);
+
+	/* align window size */
+	qas_window_size -= (qas_window_size % QAS_CORR_SIZE);
 	if (qas_window_size == 0)
 		errx(EX_USAGE, "Invalid window size\n");
 
