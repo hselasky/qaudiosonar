@@ -65,8 +65,10 @@
 #define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.0"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
-#define	QAS_SAMPLE_RATE 48000	/* HZ */
+#define	QAS_SAMPLE_RATE 48000	/* Hz */
 #define	QAS_SAMPLES_MAX	48000
+#define	QAS_DEF_SAMPLES (QAS_SAMPLE_RATE / 1000)
+#define	QAS_MAX_BUFFER_SAMPLES 512
 #define	QAS_MIDI_BUFSIZE 1024
 #define	QAS_MUL_ORDER	10
 #define	QAS_MUL_SIZE	(1U << QAS_MUL_ORDER) /* samples */
