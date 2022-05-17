@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2021 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2020-2022 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,13 +23,8 @@
  * SUCH DAMAGE.
  */
 
-#include "qaudiosonar.h"
-
 #include "qaudiosonar_buttonmap.h"
-
-static pthread_mutex_t atomic_mtx;
-static pthread_mutex_t atomic_graph;
-static pthread_cond_t atomic_cv;
+#include "qaudiosonar_spectrum.h"
 
 static const char *qas_key_map[12] = {
   "C%1", "D%1B", "D%1", "E%1B", "E%1",
@@ -37,242 +32,8 @@ static const char *qas_key_map[12] = {
   "A%1", "B%1B", "B%1",
 };
 
-int qas_num_workers = 2;
-size_t qas_window_size;
-size_t qas_in_sequence_number;
-size_t qas_out_sequence_number;
-QasMainWindow *qas_mw;
-
-static void
-atomic_init(void)
-{
-	pthread_mutex_init(&atomic_mtx, NULL);
-	pthread_mutex_init(&atomic_graph, NULL);
-	pthread_cond_init(&atomic_cv, NULL);
-}
-
 void
-atomic_lock(void)
-{
-	pthread_mutex_lock(&atomic_mtx);
-}
-
-void
-atomic_unlock(void)
-{
-	pthread_mutex_unlock(&atomic_mtx);
-}
-
-void
-atomic_graph_lock(void)
-{
-	pthread_mutex_lock(&atomic_graph);
-}
-
-void
-atomic_graph_unlock(void)
-{
-	pthread_mutex_unlock(&atomic_graph);
-}
-
-void
-atomic_wait(void)
-{
-	pthread_cond_wait(&atomic_cv, &atomic_mtx);
-}
-
-void
-atomic_wakeup(void)
-{
-	pthread_cond_broadcast(&atomic_cv);
-}
-
-static size_t
-QasGetSequenceNumber(size_t *phi)
-{
-	size_t hd = qas_display_height();
-	size_t hi = hd / 2 + 1;
-
-	*phi = hi;
-
-	atomic_lock();
-	size_t seq = qas_out_sequence_number + hd - hi;
-	atomic_unlock();
-
-	return (seq);
-}
-
-QasBandPassBox :: QasBandPassBox()
-{
-	setTitle(QString("Band pass center frequency: %1 Hz").arg(qas_sample_rate / 4));
-
-	grid = new QGridLayout(this);
-
-	pSB = new QScrollBar(Qt::Horizontal);
-
-	pSB->setRange(1, qas_sample_rate / 2);
-	pSB->setSingleStep(1);
-	pSB->setValue(qas_sample_rate / 4);
-	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
-
-	grid->addWidget(pSB, 0,0,1,1);
-}
-
-void
-QasBandPassBox :: handle_value_changed(int value)
-{
-	setTitle(QString("Band pass center frequency: %1 Hz").arg(value));
-	valueChanged(value);
-}
-
-QasBandWidthBox :: QasBandWidthBox()
-{
-	setTitle("Band width: 20 Hz");
-
-	grid = new QGridLayout(this);
-
-	pSB = new QScrollBar(Qt::Horizontal);
-
-	pSB->setRange(1, qas_sample_rate);
-	pSB->setSingleStep(1);
-	pSB->setValue(20);
-	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
-
-	grid->addWidget(pSB, 0,0,1,1);
-}
-
-void
-QasBandWidthBox :: handle_value_changed(int value)
-{
-	setTitle(QString("Band width: %1 Hz").arg(value));
-	valueChanged(value);
-}
-
-QasNoiselevelBox :: QasNoiselevelBox()
-{
-	setTitle(QString("Noise level: %1").arg(-64));
-
-	grid = new QGridLayout(this);
-
-	pSB = new QScrollBar(Qt::Horizontal);
-
-	pSB->setRange(-256, 256);
-	pSB->setSingleStep(1);
-	pSB->setValue(-64);
-	connect(pSB, SIGNAL(valueChanged(int)), this, SLOT(handle_value_changed(int)));
-
-	grid->addWidget(pSB, 0,0,1,1);
-}
-
-void
-QasNoiselevelBox :: handle_value_changed(int value)
-{
-	setTitle(QString("Noise level: %1").arg(value));
-	valueChanged(value);
-}
-
-QasConfig :: QasConfig(QasMainWindow *_mw)
-{
-	mw = _mw;
-
-	gl = new QGridLayout(this);
-
-	map_source_0 = new QasButtonMap("Main input channel\0"
-					"INPUT 0\0" "INPUT 1\0" "INPUT 0+1\0"
-					"OUTPUT 0\0" "OUTPUT 1\0" "OUTPUT 0+1\0", 6, 3);
-	map_source_1 = new QasButtonMap("Correlation input channel\0"
-					"INPUT 0\0" "INPUT 1\0" "INPUT 0+1\0"
-					"OUTPUT 0\0" "OUTPUT 1\0" "OUTPUT 0+1\0", 6, 3);
-	map_output_0 = new QasButtonMap("Output for channel 0\0"
-					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
-					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
-	map_output_1 = new QasButtonMap("Output for channel 1\0"
-					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
-					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
-
-	bp_box_0 = new QasBandPassBox();
-	bw_box_0 = new QasBandWidthBox();
-	nl_box_0 = new QasNoiselevelBox();
-	handle_filter_0(0);
-
-	connect(map_source_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_0(int)));
-	connect(map_source_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_source_1(int)));
-	connect(map_output_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_0(int)));
-	connect(map_output_1, SIGNAL(selectionChanged(int)), this, SLOT(handle_output_1(int)));
-	connect(bp_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
-	connect(bw_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));
-	connect(nl_box_0, SIGNAL(valueChanged(int)), this, SLOT(handle_filter_0(int)));	
-
-	bp_close = new QPushButton(tr("Close"));
-	connect(bp_close, SIGNAL(released()), this, SLOT(handle_close()));
-	
-	gl->addWidget(map_source_0, 0,0,1,1);
-	gl->addWidget(map_source_1, 1,0,1,1);
-	gl->addWidget(map_output_0, 2,0,1,1);
-	gl->addWidget(map_output_1, 3,0,1,1);
-	gl->addWidget(bp_box_0, 0,1,1,1);
-	gl->addWidget(bw_box_0, 1,1,1,1);
-	gl->addWidget(nl_box_0, 2,1,1,1);
-	gl->addWidget(bp_close, 4,0,1,2);
-
-	setWindowTitle(tr(QAS_WINDOW_TITLE));
-	setWindowIcon(QIcon(QAS_WINDOW_ICON));
-}
-
-void
-QasConfig :: handle_source_0(int _value)
-{
-	atomic_lock();
-	qas_source_0 = _value;
-	atomic_unlock();
-}
-
-void
-QasConfig :: handle_source_1(int _value)
-{
-	atomic_lock();
-	qas_source_1 = _value;
-	atomic_unlock();
-}
-
-void
-QasConfig :: handle_output_0(int _value)
-{
-	atomic_lock();
-	qas_output_0 = _value;
-	atomic_unlock();
-}
-
-void
-QasConfig :: handle_close(void)
-{
-	hide();
-}
-
-QasView :: QasView(QasMainWindow *_mw)
-{
-	mw = _mw;
-
-	gl = new QGridLayout(this);
-
-	map_decay_0 = new QasButtonMap("Decay selection\0"
-				       "OFF\0" "1/8\0" "1/16\0" "1/32\0"
-				       "1/64\0" "1/128\0" "1/256\0", 7, 4);
-
-	connect(map_decay_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_decay_0(int)));
-
-	bp_close = new QPushButton(tr("Close"));
-	connect(bp_close, SIGNAL(released()), this, SLOT(handle_close()));
-
-	gl->addWidget(map_decay_0, 0,0,1,1);
-	gl->addWidget(bp_close, 1,0,1,1);
-
-	setWindowTitle(tr(QAS_WINDOW_TITLE));
-	setWindowIcon(QIcon(QAS_WINDOW_ICON));
-}
-
-void
-QasView :: handle_decay_0(int _value)
+QasSpectrum :: handle_decay_0(int _value)
 {
 	atomic_graph_lock();
 	if (_value == 0)
@@ -282,81 +43,9 @@ QasView :: handle_decay_0(int _value)
 	atomic_graph_unlock();
 }
 
-void
-QasView :: handle_close(void)
+QasBand :: QasBand(QasSpectrum *_ps)
 {
-	hide();
-}
-
-static void
-qas_low_pass(double freq, double *factor, size_t window_size)
-{
-	int wh = window_size / 2;
-	int x;
-
-	freq /= (double)qas_sample_rate;
-	freq *= (double)wh;
-
-	factor[wh] += (2.0 * freq) / ((double)wh);
-	freq *= (2.0 * M_PI) / ((double)wh);
-
-	for (x = -wh+1; x < wh; x++) {
-		if (x == 0)
-			continue;
-		factor[x + wh] +=
-			sin(freq * (double)(x)) / (M_PI * (double)(x));
-	}
-}
-
-static void
-qas_band_pass(double freq_low, double freq_high,
-    double *factor, size_t window_size)
-{
-	double low = qas_sample_rate / window_size;
-	double high = qas_sample_rate / 2;
-
-	if (low < 1.0)
-		low = 1.0;
-	/* lowpass */
-	if (freq_low < low)
-		freq_low = low;
-	qas_low_pass(freq_low, factor, window_size);
-
-	/* highpass */
-	if (freq_high >= high)
-		freq_high = high;
-	qas_low_pass(-freq_high, factor, window_size);
-}
-
-void
-QasConfig :: handle_filter_0(int value)
-{
-	double temp[QAS_CORR_SIZE];
-	double adjust = bw_box_0->pSB->value() / 2.0;
-	double center = bp_box_0->pSB->value();
-	int noiseLevel = nl_box_0->pSB->value();
-
-	memset(temp, 0, sizeof(temp));
-	qas_band_pass(center - adjust, center + adjust, temp, QAS_CORR_SIZE);
-
-	atomic_lock();
-	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
-		qas_band_pass_filter[x] = temp[x];
-	qas_noise_level = pow(2.0, noiseLevel / 16.0);
-	atomic_unlock();
-}
-
-void
-QasConfig :: handle_output_1(int _value)
-{
-	atomic_lock();
-	qas_output_1 = _value;
-	atomic_unlock();
-}
-
-QasBand :: QasBand(QasMainWindow *_mw)
-{
-	mw = _mw;
+	ps = _ps;
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
 
@@ -365,9 +54,9 @@ QasBand :: QasBand(QasMainWindow *_mw)
 	watchdog->start(500);
 }
 
-QasGraph :: QasGraph(QasMainWindow *_mw)
+QasGraph :: QasGraph(QasSpectrum *_ps)
 {
-	mw = _mw;
+	ps = _ps;
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
 	mon_index = new double [qas_window_size];
@@ -391,11 +80,26 @@ QasBand :: getText(QMouseEvent *event)
 	return (QString(qas_key_map[key]).arg(5));
 }
 
+static size_t
+QasGetSequenceNumber(size_t *phi)
+{
+	size_t hd = qas_display_height();
+	size_t hi = hd / 2 + 1;
+
+	*phi = hi;
+
+	atomic_lock();
+	size_t seq = qas_out_sequence_number + hd - hi;
+	atomic_unlock();
+
+	return (seq);
+}
+
 QString
 QasBand :: getFullText(int ypos)
 {
-  	size_t wi = qas_display_band_width() / 3;
-  	size_t hi;
+	size_t wi = qas_display_band_width() / 3;
+	size_t hi;
 	size_t seq = QasGetSequenceNumber(&hi);
 	int ho = (hi * ypos) / height();
 	QString str;
@@ -471,11 +175,11 @@ void
 QasBand :: mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::RightButton) {
-		mw->edit->appendPlainText("");
+		ps->edit->appendPlainText("");
 	} else if (event->button() == Qt::MiddleButton) {
-		mw->edit->appendPlainText(getText(event));
+		ps->edit->appendPlainText(getText(event));
 	} else if (event->button() == Qt::LeftButton) {
-		mw->edit->appendPlainText(getFullText(event->y()));
+		ps->edit->appendPlainText(getFullText(event->y()));
 	}
 	event->accept();
 }
@@ -549,7 +253,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 
 	if (qas_record != 0 && qas_freeze == 0) {
 		QString str = getFullText(0);
-		mw->handle_append_text(str);
+		ps->handle_append_text(str);
 	}
 
 	paint.drawImage(QRect(0,0,w,h),accu);
@@ -566,7 +270,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 	  QString(" - %1Hz\nR=%2")
 	  .arg(QAS_FREQ_TABLE_ROUNDED(real_band))
 	  .arg((double)real_offset / (double)QAS_WAVE_STEP, 0, 'f', 3);
-	mw->lbl_max->setText(str);
+	ps->lbl_max->setText(str);
 }
 
 QString
@@ -605,9 +309,9 @@ void
 QasGraph :: mousePressEvent(QMouseEvent *event)
 {
 	if (event->button() == Qt::RightButton) {
-		mw->edit->appendPlainText("");
+		ps->edit->appendPlainText("");
 	} else if (event->button() == Qt::LeftButton) {
-		mw->edit->appendPlainText(getText(event));
+		ps->edit->appendPlainText(getText(event));
 	}
 	event->accept();
 }
@@ -646,7 +350,7 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	size_t wc = qas_window_size;
 	double corr_max_power;
 	size_t corr_max_off;
-	size_t zoom = mw->sb_zoom->value();
+	size_t zoom = ps->sb_zoom->value();
 	QString corr_sign;
 
 	if (w == 0 || h == 0)
@@ -849,14 +553,9 @@ QasGraph :: handle_watchdog()
 	update();
 }
 
-QasMainWindow :: QasMainWindow()
+QasSpectrum :: QasSpectrum()
 {
 	QPushButton *pb;
-
-	pa_max_index = Pa_GetDeviceCount();
-
-	qc = new QasConfig(this);
-	qv = new QasView(this);
 
 	gl = new QGridLayout(this);
 
@@ -875,49 +574,17 @@ QasMainWindow :: QasMainWindow()
 	sb_zoom->setSingleStep(1);
 	sb_zoom->setValue(0);
 
-	but_dsp_rx = new QPushButton(tr("DSP RX"));
-	connect(but_dsp_rx, SIGNAL(released()), this, SLOT(handle_dsp_rx()));
-	gl->addWidget(but_dsp_rx, 0,0,1,1);
-
-	led_dsp_read = new QLineEdit(paName(Pa_GetDefaultInputDevice()));
-	gl->addWidget(led_dsp_read, 0,1,1,1);
-
-	but_dsp_tx = new QPushButton(tr("DSP TX"));
-	connect(but_dsp_tx, SIGNAL(released()), this, SLOT(handle_dsp_tx()));
-	gl->addWidget(but_dsp_tx, 1,0,1,1);
-
-	led_dsp_write = new QLineEdit(paName(Pa_GetDefaultOutputDevice()));
-	gl->addWidget(led_dsp_write, 1,1,1,1);
-
-	but_midi_tx = new QPushButton(tr("MIDI TX"));
-	gl->addWidget(but_midi_tx, 2,0,1,1);
-
-	led_midi_write = new QLineEdit("/dev/midi");
-	gl->addWidget(led_midi_write, 2,1,1,1);
-	
-	pb = new QPushButton(tr("Apply"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_apply()));
-	gl->addWidget(pb, 0,2,1,1);
-
 	pb = new QPushButton(tr("Reset"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_reset()));
-	gl->addWidget(pb, 1,2,1,1);
+	gl->addWidget(pb, 1,0,1,1);
 
-	pb = new QPushButton(tr("AudioConfig"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_config()));
-	gl->addWidget(pb, 0,7,1,1);
-       
-	pb = new QPushButton(tr("ViewConfig"));
-	connect(pb, SIGNAL(released()), this, SLOT(handle_view()));
-	gl->addWidget(pb, 1,7,1,1);
-
-	pb = new QPushButton(tr("Toggle\nFreeze"));
+	pb = new QPushButton(tr("Toggle freeze"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
-	gl->addWidget(pb, 0,6,2,1);
+	gl->addWidget(pb, 1,1,1,1);
 
-	pb = new QPushButton(tr("RecordTog"));
+	pb = new QPushButton(tr("Toggle record"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_record()));
-	gl->addWidget(pb, 2,2,1,1);
+	gl->addWidget(pb, 1,2,1,1);
 
 	tuning = new QSpinBox();
 	tuning->setRange(-999,999);
@@ -932,15 +599,23 @@ QasMainWindow :: QasMainWindow()
 	sensitivity->setOrientation(Qt::Horizontal);
 	connect(sensitivity, SIGNAL(valueChanged(int)), this, SLOT(handle_sensitivity()));
 
+	map_decay_0 = new QasButtonMap("Decay selection\0"
+				       "OFF\0" "1/8\0" "1/16\0" "1/32\0"
+				       "1/64\0" "1/128\0" "1/256\0", 7, 7);
+
+	connect(map_decay_0, SIGNAL(selectionChanged(int)), this, SLOT(handle_decay_0(int)));
+
 	edit = new QPlainTextEdit();
-	
+
 	qbw = new QWidget();
 	glb = new QGridLayout(qbw);
 
-	gl->addWidget(qbw, 0,8,6,2);
-	gl->addWidget(sb_zoom, 3,0,1,8);
-	gl->addWidget(qg, 4,0,2,8);
-	gl->setRowStretch(2,1);
+	gl->addWidget(map_decay_0, 0,0,1,4);
+	gl->addWidget(qbw, 0,4,4,1);
+	gl->addWidget(sb_zoom, 2,0,1,4);
+	gl->addWidget(qg, 3,0,2,4);
+	gl->setRowStretch(3,2);
+	gl->setColumnStretch(3,1);
 
 	glb->addWidget(lbl_max, 1,0,1,1);
 	glb->addWidget(tuning, 2,0,1,1);
@@ -956,100 +631,20 @@ QasMainWindow :: QasMainWindow()
 }
 
 void
-QasMainWindow :: handle_apply()
-{
-	QString midi_wr = led_midi_write->text().trimmed();
-	QString dsp_rx = led_dsp_read->text().trimmed();
-	QString dsp_tx = led_dsp_write->text().trimmed();
-	PaDeviceIndex i;
-	int x;
-
-	atomic_lock();
-	qas_rx_device = paNoDevice;
-	for (i = 0; i != pa_max_index; i++) {
-		if (dsp_rx == paName(i)) {
-			qas_rx_device = i;
-			break;
-		}
-	}
-	qas_tx_device = paNoDevice;
-	for (i = 0; i != pa_max_index; i++) {
-		if (dsp_tx == paName(i)) {
-			qas_tx_device = i;
-			break;
-		}
-	}
-
-	for (x = 0; x != midi_wr.length() &&
-	       x != sizeof(midi_write_device) - 1; x++) {
-		midi_write_device[x] = midi_wr[x].toLatin1();
-	}
-
-	midi_write_device[x] = 0;
-	atomic_wakeup();
-	atomic_unlock();
-}
-
-void
-QasMainWindow :: handle_dsp_rx()
-{
-	PaDeviceIndex i;
-
-	if (pa_max_index <= 0)
-		return;
-	for (i = 0; i != pa_max_index; i++) {
-		if (led_dsp_read->text() == paName(i)) {
-			i++;
-			break;
-		}
-	}
-	i %= pa_max_index;
-	led_dsp_read->setText(paName(i));
-}
-
-void
-QasMainWindow :: handle_dsp_tx()
-{
-	PaDeviceIndex i;
-
-	if (pa_max_index <= 0)
-		return;
-	for (i = 0; i != pa_max_index; i++) {
-		if (led_dsp_write->text() == paName(i)) {
-			i++;
-			break;
-		}
-	}
-	i %= pa_max_index;
-	led_dsp_write->setText(paName(i));
-}
-
-void
-QasMainWindow :: handle_reset()
+QasSpectrum :: handle_reset()
 {
 	qas_dsp_sync();
 }
 
-void
-QasMainWindow :: handle_config()
-{
-	qc->show();
-}
 
 void
-QasMainWindow :: handle_view()
-{
-	qv->show();
-}
-
-void
-QasMainWindow :: handle_tuning()
+QasSpectrum :: handle_tuning()
 {
 	qas_tuning = pow(2.0, (double)tuning->value() / 12000.0);
 }
 
 void
-QasMainWindow :: handle_sensitivity()
+QasSpectrum :: handle_sensitivity()
 {
 	atomic_lock();
 	qas_sensitivity = sensitivity->value();
@@ -1059,12 +654,12 @@ QasMainWindow :: handle_sensitivity()
 }
 
 void
-QasMainWindow :: handle_slider(int value)
+QasSpectrum :: handle_slider(int value)
 {
 }
 
 void
-QasMainWindow :: handle_tog_freeze()
+QasSpectrum :: handle_tog_freeze()
 {
 	atomic_lock();
 	qas_freeze = !qas_freeze;
@@ -1072,79 +667,9 @@ QasMainWindow :: handle_tog_freeze()
 }
 
 void
-QasMainWindow :: handle_tog_record()
+QasSpectrum :: handle_tog_record()
 {
 	atomic_lock();
 	qas_record = !qas_record;
 	atomic_unlock();
-}
-
-static void
-usage(void)
-{
-	fprintf(stderr, "Usage: qaudiosonar [-r <samplerate>] "
-	    "[-n <workers>] [-w <windowsize>]\n");
-	exit(0);
-}
-
-int
-main(int argc, char **argv)
-{
-	QApplication app(argc, argv);
-	int c;
-
-        /* must be first, before any threads are created */
-        signal(SIGPIPE, SIG_IGN);
-	
-	while ((c = getopt(argc, argv, "n:r:hw:")) != -1) {
-		switch (c) {
-		case 'n':
-			qas_num_workers = atoi(optarg);
-			if (qas_num_workers < 1)
-				qas_num_workers = 1;
-			else if (qas_num_workers > 16)
-				qas_num_workers = 16;
-			break;
-		case 'r':
-			qas_sample_rate = atoi(optarg);
-			if (qas_sample_rate < 8000)
-				qas_sample_rate = 8000;
-			else if (qas_sample_rate > 96000)
-				qas_sample_rate = 96000;
-			break;
-		case 'w':
-			qas_window_size = atoi(optarg);
-			break;
-		default:
-			usage();
-			break;
-		}
-	}
-
-	atomic_init();
-
-	/* range check window size */
-	if (qas_window_size == 0)
-		qas_window_size = QAS_CORR_SIZE;
-	else if (qas_window_size >= (size_t)(16 * qas_sample_rate))
-		qas_window_size = (size_t)(16 * qas_sample_rate);
-
-	/* align window size */
-	qas_window_size -= (qas_window_size % QAS_CORR_SIZE);
-	if (qas_window_size == 0)
-		errx(EX_USAGE, "Invalid window size\n");
-
-	if (Pa_Initialize() != paNoError)
-		errx(EX_SOFTWARE, "Could not setup portaudio\n");
-
-	qas_wave_init();
-	qas_corr_init();
-	qas_display_init();
-	qas_midi_init();
-	qas_dsp_init();
-
-	qas_mw = new QasMainWindow();
-	qas_mw->show();
-
-	return (app.exec());
 }

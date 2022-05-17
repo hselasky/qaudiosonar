@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2019 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2022 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -23,7 +23,8 @@
  * SUCH DAMAGE.
  */
 
-#include "qaudiosonar.h"
+#include "qaudiosonar_mainwindow.h"
+#include "qaudiosonar_configdlg.h"
 
 #define	QAS_LAT 0.016 /* seconds */
 int	qas_sample_rate = 16000;
@@ -34,8 +35,6 @@ int	qas_output_1;
 int	qas_freeze;
 int	qas_sensitivity;
 int	qas_record;
-PaDeviceIndex qas_rx_device = paNoDevice;
-PaDeviceIndex qas_tx_device = paNoDevice;
 double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_noise_level = 1.0;
 double qas_view_decay = 0;
@@ -235,7 +234,7 @@ qas_dsp_audio_analyzer(void *arg)
 			       dsp_read_space(&qas_read_buffer[1]) < QAS_CORR_SIZE) {
 					atomic_wait();
 			}
-	
+
 			for (unsigned x = 0; x != QAS_CORR_SIZE; x++) {
 				dsp_rd_data[0][x] = dsp_get_sample(&qas_read_buffer[0]);
 				dsp_rd_data[1][x] = dsp_get_sample(&qas_read_buffer[1]);
@@ -283,173 +282,71 @@ qas_dsp_audio_analyzer(void *arg)
 	return (0);
 }
 
-static void *
-qas_dsp_write_thread(void *)
+Q_DECL_EXPORT void
+qas_sound_process(float *pl, float *pr, size_t num)
 {
-	static union {
-		int32_t s32[2 * QAS_DSP_SIZE];
-		char c[0];
-	} buffer;
-	size_t qas_tx_size = qas_sample_rate * QAS_LAT;
-	PaStreamParameters param = {};
-	PaStream *stream = 0;
-	const PaDeviceInfo *info;
-	PaError err;
+	static float input_l[QAS_SAMPLE_RATE / 8000];
+	static float input_r[QAS_SAMPLE_RATE / 8000];
+	static float output_l[QAS_SAMPLE_RATE / 8000];
+	static float output_r[QAS_SAMPLE_RATE / 8000];
+	static uint8_t remainder;
+	const uint8_t factor = QAS_SAMPLE_RATE / qas_sample_rate;
 
-	if (qas_tx_size > QAS_DSP_SIZE)
-		qas_tx_size = QAS_DSP_SIZE;
+	atomic_lock();
 
-	while (1) {
-		if (stream != 0) {
-			Pa_CloseStream(stream);
-			stream = 0;
+	while (num-- != 0) {
+		if (remainder < factor) {
+			input_l[remainder] = *pl;
+			*pl = output_l[remainder];
+			pl++;
+			input_r[remainder] = *pr;
+			*pr = output_r[remainder];
+			pr++;
+			remainder++;
 		}
 
-		usleep(250000);
+		if (remainder == factor) {
+			float s_l = 0;
+			float s_r = 0;
 
-		atomic_lock();
-		param.device = qas_tx_device;
-		atomic_unlock();
-
-		if (param.device == paNoDevice)
-			continue;
-
-		info = Pa_GetDeviceInfo(param.device);
-		if (info == 0)
-			continue;
-
-		param.channelCount = 2;
-		param.sampleFormat = paInt32;
-		param.suggestedLatency = QAS_LAT;
-
-		if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
-			param.channelCount = 1;
-			if (Pa_IsFormatSupported(NULL, &param, qas_sample_rate) != paNoError) {
-				continue;
+			/* low pass input buffer, if any */
+			for (uint8_t x = 0; x != factor; x++) {
+				s_l += input_l[x];
+				s_r += input_r[x];
 			}
-		}
 
-		if (Pa_OpenStream(&stream, NULL, &param,
-		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
-			continue;
+			s_l /= (float)factor;
+			s_r /= (float)factor;
 
-		while (1) {
-			atomic_lock();
-			while (dsp_read_space(&qas_write_buffer[0]) < qas_tx_size ||
-			       dsp_read_space(&qas_write_buffer[1]) < qas_tx_size) {
-				atomic_wakeup();
-				atomic_wait();
+			if (dsp_write_space(&qas_read_buffer[0]) != 0)
+				dsp_put_sample(&qas_read_buffer[0], (float)0x7FFFFF00 * s_l);
+			if (dsp_write_space(&qas_read_buffer[1]) != 0)
+				dsp_put_sample(&qas_read_buffer[1], (float)0x7FFFFF00 * s_r);
+
+			if (dsp_read_space(&qas_write_buffer[0]) != 0)
+				s_l = dsp_get_sample(&qas_write_buffer[0]) / (float)0x7FFFFF00;
+			else
+				s_l = 0;
+
+			if (dsp_read_space(&qas_write_buffer[1]) != 0)
+				s_r = dsp_get_sample(&qas_write_buffer[1]) / (float)0x7FFFFF00;
+			else
+				s_r = 0;
+
+			/* upsample output buffer, if any */
+			for (uint8_t x = 0; x != factor; x++) {
+				output_l[x] =
+				    output_l[factor - 1] * (float)(factor - 1 - x) + s_l * (float)(x + 1);
+				output_l[x] /= (float)factor;
+				output_r[x] =
+				    output_r[factor - 1] * (float)(factor - 1 - x) + s_r * (float)(x + 1);
+				output_r[x] /= (float)factor;
 			}
-			if (param.channelCount == 2) {
-				for (unsigned x = 0; x != qas_tx_size; x++) {
-					buffer.s32[2*x+0] = dsp_get_sample(&qas_write_buffer[0]);
-					buffer.s32[2*x+1] = dsp_get_sample(&qas_write_buffer[1]);
-				}
-			} else {
-				for (unsigned x = 0; x != qas_tx_size; x++) {
-					buffer.s32[x] = dsp_get_sample(&qas_write_buffer[0]);
-					(void) dsp_get_sample(&qas_write_buffer[1]);
-				}
-			}
-			atomic_wakeup();
-			if (param.device != qas_tx_device) {
-				atomic_unlock();
-				break;
-			}
-			atomic_unlock();
-
-			if (Pa_IsStreamStopped(stream) &&
-			    Pa_StartStream(stream) != paNoError)
-				break;
-
-			err = Pa_WriteStream(stream, buffer.c, qas_tx_size);
-			if (err != paNoError && err != paOutputUnderflowed)
-				break;
+			remainder = 0;
 		}
 	}
-	return (0);
-}
-
-static void *
-qas_dsp_read_thread(void *arg)
-{
-	static union {
-		int32_t s32[2 * QAS_DSP_SIZE];
-		char c[0];
-	} buffer;
-	size_t qas_rx_size = qas_sample_rate * QAS_LAT;
-	PaStreamParameters param = {};
-	PaStream *stream = 0;
-	const PaDeviceInfo *info;
-	PaError err;
-
-	if (qas_rx_size > QAS_DSP_SIZE)
-		qas_rx_size = QAS_DSP_SIZE;
-
-	while (1) {
-		if (stream != 0) {
-			Pa_CloseStream(stream);
-			stream = 0;
-		}
-	  
-		usleep(250000);
-
-		atomic_lock();
-		param.device = qas_rx_device;
-		atomic_unlock();
-
-		if (param.device == paNoDevice)
-			continue;
-
-		info = Pa_GetDeviceInfo(param.device);
-		if (info == 0)
-			continue;
-
-		param.channelCount = 2;
-		param.sampleFormat = paInt32;
-		param.suggestedLatency = QAS_LAT;
-
-		if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
-			param.channelCount = 1;
-			if (Pa_IsFormatSupported(&param, NULL, qas_sample_rate) != paNoError) {
-				continue;
-			}
-		}
-
-		if (Pa_OpenStream(&stream, &param, NULL,
-		    qas_sample_rate, 0, paClipOff, NULL, NULL) != paNoError)
-			continue;
-
-		while (1) {
-			if (Pa_IsStreamStopped(stream) &&
-			    Pa_StartStream(stream) != paNoError)
-				break;
-
-			err = Pa_ReadStream(stream, buffer.c, qas_rx_size);
-			if (err != paNoError && err != paInputOverflowed)
-				break;
-
-			atomic_lock();
-			if (param.channelCount == 2) {
-				for (unsigned x = 0; x != qas_rx_size; x++) {
-					dsp_put_sample(&qas_read_buffer[0], buffer.s32[2*x+0]);
-					dsp_put_sample(&qas_read_buffer[1], buffer.s32[2*x+1]);
-				}
-			} else {
-				for (unsigned x = 0; x != qas_rx_size; x++) {
-					dsp_put_sample(&qas_read_buffer[0], buffer.s32[x]);
-					dsp_put_sample(&qas_read_buffer[1], 0);
-				}
-			}
-			atomic_wakeup();
-			if (param.device != qas_rx_device) {
-				atomic_unlock();
-				break;
-			}
-			atomic_unlock();
-		}
-	}
-	return (0);
+	atomic_wakeup();
+	atomic_unlock();
 }
 
 void
@@ -463,6 +360,37 @@ qas_dsp_init()
 
 	pthread_create(&td, 0, &qas_dsp_audio_producer, 0);
 	pthread_create(&td, 0, &qas_dsp_audio_analyzer, 0);
-	pthread_create(&td, 0, &qas_dsp_write_thread, 0);
-	pthread_create(&td, 0, &qas_dsp_read_thread, 0);
+
+#ifdef HAVE_JACK_AUDIO
+	if (qas_sound_init("qaudiosonar", true)) {
+		QMessageBox::information(qas_mw, QObject::tr("NO AUDIO"),
+		    QObject::tr("Cannot connect to JACK server or \n"
+				"sample rate is different from %1Hz or \n"
+				"latency is too high").arg(QAS_SAMPLE_RATE));
+	}
+	qas_mw->w_config->audio_dev.refreshStatus();
+#endif
+
+#ifdef HAVE_MAC_AUDIO
+	/* setup MIDI first */
+	qas_midi_init("qaudiosonar");
+
+	if (qas_sound_init(0, 0)) {
+		QMessageBox::information(qas_mw, QObject::tr("NO AUDIO"),
+		    QObject::tr("Cannot connect to audio subsystem.\n"
+				"Check that you have an audio device connected and\n"
+				"that the sample rate is set to %1Hz.").arg(QAS_SAMPLE_RATE));
+	}
+	qas_mw->w_config->audio_dev.refreshStatus();
+#endif
+
+#ifdef HAVE_ASIO_AUDIO
+	if (qas_sound_init(0, 0)) {
+		QMessageBox::information(qas_mw, QObject::tr("NO AUDIO"),
+		    QObject::tr("Cannot connect to ASIO subsystem or \n"
+				"sample rate is different from %1Hz or \n"
+				"buffer size is different from 96 samples.").arg(QAS_SAMPLE_RATE));
+	}
+	qas_mw->w_config->audio_dev.refreshStatus();
+#endif
 }

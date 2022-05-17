@@ -1,5 +1,5 @@
 /*-
- * Copyright (c) 2016-2021 Hans Petter Selasky. All rights reserved.
+ * Copyright (c) 2016-2022 Hans Petter Selasky. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions
@@ -42,8 +42,6 @@
 #include <sys/filio.h>
 #include <sys/queue.h>
 
-#include <portaudio.h>
-
 #include <QApplication>
 #include <QPushButton>
 #include <QLineEdit>
@@ -60,10 +58,13 @@
 #include <QGroupBox>
 #include <QImage>
 #include <QSlider>
+#include <QStackedWidget>
+#include <QMessageBox>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.7.5"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.0"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
+#define	QAS_SAMPLE_RATE 48000	/* HZ */
 #define	QAS_SAMPLES_MAX	48000
 #define	QAS_MIDI_BUFSIZE 1024
 #define	QAS_MUL_ORDER	10
@@ -76,197 +77,26 @@
 #define	QAS_FREQ_TABLE_ROUNDED(band) \
     ((double)(((int64_t)(1000.0 * qas_freq_table[band])) / 1000.0))
 
-#if (QAS_DSP_SIZE == 0 || QAS_BUFFER_SIZE == 0)
-#error "Invalid parameters"
+#if (QAS_BUFFER_SIZE == 0)
+#error "Invalid QAS_BUFFER_SIZE is zero"
 #endif
 
-class QasBandPassBox : public QGroupBox {
-	Q_OBJECT;
-public:
-	QasBandPassBox();
-	~QasBandPassBox() {};
+#if (QAS_DSP_SIZE == 0)
+#error "Invalid QAS_DSP_SIZE is zero"
+#endif
 
-	QScrollBar *pSB;
-	QGridLayout *grid;
-
-signals:
-	void valueChanged(int);
-
-public slots:
-	void handle_value_changed(int);
-};
-
-class QasBandWidthBox : public QGroupBox {
-	Q_OBJECT;
-public:
-	QasBandWidthBox();
-	~QasBandWidthBox() {};
-
-	QScrollBar *pSB;
-	QGridLayout *grid;
-
-signals:
-	void valueChanged(int);
-
-public slots:
-	void handle_value_changed(int);
-};
-
-class QasNoiselevelBox : public QGroupBox {
-	Q_OBJECT;
-public:
-	QasNoiselevelBox();
-	~QasNoiselevelBox() {};
-
-	QScrollBar *pSB;
-	QGridLayout *grid;
-
-signals:
-	void valueChanged(int);
-
-public slots:
-	void handle_value_changed(int);
-};
-
-class QasMainWindow;
-class QasButtonMap;
-class QasConfig : public QWidget {
-	Q_OBJECT
-public:
-	QasConfig(QasMainWindow *);
-	~QasConfig() { };
-
-	QasMainWindow *mw;
-
-	QGridLayout *gl;
-
-	QasButtonMap *map_source_0;
-	QasButtonMap *map_source_1;
-	QasButtonMap *map_output_0;
-	QasButtonMap *map_output_1;
-	QasBandPassBox *bp_box_0;
-	QasBandWidthBox *bw_box_0;
-	QasNoiselevelBox *nl_box_0;
-	QPushButton *bp_close;
-
-public slots:
-	void handle_source_0(int);
-	void handle_source_1(int);
-	void handle_output_0(int);
-	void handle_output_1(int);
-	void handle_filter_0(int);
-	void handle_close(void);
-};
-
-class QasView : public QWidget {
-	Q_OBJECT
-public:
-	QasView(QasMainWindow *);
-	~QasView() { };
-
-	QasMainWindow *mw;
-
-	QGridLayout *gl;
-
-	QasButtonMap *map_decay_0;
-	QPushButton *bp_close;
-
-public slots:
-	void handle_decay_0(int);
-	void handle_close();
-};
-
-class QasBand : public QWidget {
-	Q_OBJECT
-public:
-	enum { BAND_MAX = 12 };
-	QasBand(QasMainWindow *);
-	~QasBand() { };
-	QasMainWindow *mw;
-	QTimer *watchdog;
-
-	QString getText(QMouseEvent *);
-	QString getFullText(int);
-
-	void paintEvent(QPaintEvent *);
-	void mousePressEvent(QMouseEvent *);
-	void mouseMoveEvent(QMouseEvent *);
-
-public slots:
-	void handle_watchdog();
-};
-
-class QasGraph : public QWidget {
-	Q_OBJECT
-public:
-	QasGraph(QasMainWindow *);
-	~QasGraph();
-	QasMainWindow *mw;
-	QTimer *watchdog;
-	double *mon_index;
-
-	QString getText(QMouseEvent *);
-
-	void paintEvent(QPaintEvent *);
-	void mousePressEvent(QMouseEvent *);
-	void mouseMoveEvent(QMouseEvent *);
-
-public slots:
-	void handle_watchdog();
-};
-
-class QasMainWindow : public QWidget {
-	Q_OBJECT
-public:
-	QasMainWindow();
-	~QasMainWindow() { };
-
-	QString paName(PaDeviceIndex index) {
-		return QString("PortAudio #%1").arg(index);
-	};
-
-	void closeEvent (QCloseEvent *event) {
-		QCoreApplication::exit();
-	};
-
-	QasConfig *qc;
-	QasView *qv;
-	QGridLayout *gl;
-	QGridLayout *glb;
-	QScrollBar *sb_zoom;
-	QLabel *lbl_max;
-	QWidget *qbw;
-	QasBand *qb;
-	QasGraph *qg;
-	QLineEdit *led_dsp_read;
-	QLineEdit *led_dsp_write;
-	QLineEdit *led_midi_write;
-	QPlainTextEdit *edit;
-	QSpinBox *tuning;
-	QSlider *sensitivity;
-	QPushButton *but_dsp_rx;
-	QPushButton *but_dsp_tx;
-	QPushButton *but_midi_tx;
-
-	PaDeviceIndex pa_max_index;
-signals:
-	void handle_append_text(const QString);
-
-public slots:
-	void handle_apply();
-	void handle_reset();
-	void handle_tog_freeze();
-	void handle_tog_record();
-	void handle_slider(int);
-	void handle_config();
-	void handle_view();
-	void handle_tuning();
-	void handle_sensitivity();
-	void handle_dsp_rx();
-	void handle_dsp_tx();
-};
+#define	QAS_NO_SIGNAL(a,b) do {	\
+  a.blockSignals(true);		\
+  a.b;				\
+  a.blockSignals(false);	\
+} while (0)
 
 /* ============== GENERIC SUPPORT ============== */
+
+class QasButtonMap;
+class QasMainWindow;
+class QasConfigDlg;
+class QasSpectrum;
 
 extern int qas_num_workers;
 extern size_t qas_in_sequence_number;
@@ -386,8 +216,6 @@ struct dsp_buffer {
 	unsigned out_off;
 };
 
-extern PaDeviceIndex qas_rx_device;
-extern PaDeviceIndex qas_tx_device;
 extern double qas_band_pass_filter[QAS_CORR_SIZE];
 
 extern void qas_dsp_init();
@@ -401,7 +229,6 @@ extern void qas_dsp_sync(void);
 
 /* ============== MIDI SUPPORT ============== */
 
-extern char midi_write_device[1024];
 extern double qas_noise_level;
 
 extern void qas_midi_init();
@@ -412,5 +239,27 @@ extern void qas_midi_delay_send(uint8_t);
 
 extern double qas_ftt_cos(double);
 extern double qas_ftt_sin(double);
+
+/* ============== SOUND APIs ============== */
+
+extern void qas_sound_rescan();
+extern bool qas_sound_init(const char *, bool);
+extern void qas_sound_uninit();
+extern int qas_sound_toggle_buffer_samples(int);
+extern QString qas_sound_get_device_name(int);
+extern int qas_sound_set_input_device(int);
+extern int qas_sound_set_output_device(int);
+extern int qas_sound_set_input_channel(int, int);
+extern int qas_sound_set_output_channel(int, int);
+extern bool qas_sound_is_input_device(int);
+extern bool qas_sound_is_output_device(int);
+extern int qas_sound_max_input_channel();
+extern int qas_sound_max_output_channel();
+extern int qas_sound_max_devices();
+
+extern void qas_sound_get_input_status(QString &);
+extern void qas_sound_get_output_status(QString &);
+extern void qas_sound_process(float *, float *, size_t);
+extern int qas_midi_process(uint8_t *ptr);
 
 #endif			/* _QAUDIOSONAR_H_ */

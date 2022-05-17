@@ -64,7 +64,7 @@ qas_corr_free(struct qas_corr_data *ptr)
 void
 qas_corr_insert(struct qas_corr_data *ptr)
 {
-  	qas_corr_lock();
+	qas_corr_lock();
 	TAILQ_INSERT_TAIL(&qas_corr_head, ptr, entry);
 	qas_corr_signal();
 	qas_corr_unlock();
@@ -75,7 +75,7 @@ qas_corr_job_dequeue()
 {
 	struct qas_corr_data *ptr;
 
-  	qas_corr_lock();
+	qas_corr_lock();
 	while ((ptr = TAILQ_FIRST(&qas_corr_head)) == 0)
 		qas_corr_wait();
 	TAILQ_REMOVE(&qas_corr_head, ptr, entry);

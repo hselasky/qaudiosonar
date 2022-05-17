@@ -59,7 +59,7 @@ qas_wave_job_dequeue()
 {
 	struct qas_wave_job *pjob;
 
-  	qas_wave_lock();
+	qas_wave_lock();
 	while ((pjob = TAILQ_FIRST(&qas_wave_head)) == 0)
 		qas_wave_wait();
 	TAILQ_REMOVE(&qas_wave_head, pjob, entry);

@@ -50,7 +50,7 @@ qas_display_job_dequeue()
 {
 	struct qas_wave_job *pjob;
 
-  	qas_display_lock();
+	qas_display_lock();
 	while ((pjob = TAILQ_FIRST(&qas_display_in_head)) == 0)
 		qas_display_wait();
 	TAILQ_REMOVE(&qas_display_in_head, pjob, entry);
@@ -194,7 +194,7 @@ qas_display_worker(void *arg)
 
 			/* submit three new jobs */
 			pcorr->refcount += 3;
-			
+
 			pjob = qas_wave_job_alloc();
 			pjob->band_start = y * QAS_WAVE_STEP;
 			pjob->data = pcorr;
@@ -222,7 +222,7 @@ qas_display_worker(void *arg)
 
 			qas_display_worker_done(data, band);
 			qas_corr_free(pcorr);
-			
+
 			atomic_lock();
 			qas_out_sequence_number++;
 			atomic_unlock();
