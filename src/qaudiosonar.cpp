@@ -130,7 +130,7 @@ main(int argc, char **argv)
 
 	/* range check window size */
 	if (qas_window_size == 0)
-		qas_window_size = QAS_CORR_SIZE;
+		qas_window_size = qas_sample_rate / 2;
 	else if (qas_window_size >= (size_t)(16 * qas_sample_rate))
 		qas_window_size = (size_t)(16 * qas_sample_rate);
 
