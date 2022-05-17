@@ -51,6 +51,7 @@
 #include <QPainter>
 #include <QColor>
 #include <QTimer>
+#include <QThread>
 #include <QScrollBar>
 #include <QSpinBox>
 #include <QMouseEvent>

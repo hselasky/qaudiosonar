@@ -141,6 +141,8 @@ qas_wave_analyze_binary_search(const double *indata, double *out, size_t band, s
 static void *
 qas_wave_worker(void *arg)
 {
+	QThread::currentThread()->setPriority(QThread::LowPriority);
+
 	while (1) {
 		struct qas_wave_job *pjob;
 

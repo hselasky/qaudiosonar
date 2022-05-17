@@ -111,6 +111,8 @@ qas_corr_unlock()
 static void *
 qas_corr_worker(void *arg)
 {
+	QThread::currentThread()->setPriority(QThread::LowPriority);
+
 	while (1) {
 		struct qas_corr_data *ptr;
 		struct qas_wave_job *pjob;

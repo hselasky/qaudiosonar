@@ -149,5 +149,7 @@ main(int argc, char **argv)
 
 	qas_mw->show();
 
+	QThread::currentThread()->setPriority(QThread::LowPriority);
+
 	return (app.exec());
 }
