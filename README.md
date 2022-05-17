@@ -1,5 +1,5 @@
 <IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/qaudiosonar_128x128.png"></IMG>
-# Quick Audio Sonar v1.7.4
+# Quick Audio Sonar v1.8.0
 
 Quick Audio Sonar is the software you need to tune your professional
 audio system. Unlike other audio analysis tools Quick Audio Sonar uses
@@ -7,15 +7,15 @@ triangular waves for frequency detection.
 
 # Features
 
-- can generate test signal and measure loopback time
+- can generate test signal and measure signal delay time
 - can analyze input audio by frequency
 - can decode tones into nearest 12-scale score
 - can be used to tune musical instruments, guitar, piano and so on.
 
 # Source code for programmers
 
-If you are using FreeBSD there is a port in 
-/usr/ports/audio/qaudiosonar that allows you to easily install this
+If you are using FreeBSD there is a port at
+/usr/ports/audio/qaudiosonar allowing you to easily install this
 program. Here is a quick howto compile the software for other systems,
 like Linux:
 
@@ -25,18 +25,12 @@ like Linux:
 git clone https://github.com/hselasky/qaudiosonar.git
 
 2) Install Qt5.x
-3) Install Portaudio
+3) Install JACK
 
 </PRE>
 
-# Screenshots from v1.6.0
-<IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot000.png"></IMG>
-
-# Screenshots from v1.7.0
-<IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot001.png"></IMG>
-
-# Screenshots from v1.7.2
-<IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot002.png"></IMG>
+# Screenshots from v1.8.0
+<IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot003.png"></IMG>
 
 # Supported platforms
 - FreeBSD (<a HREF="http://www.freshports.org/audio/qaudiosonar">See Ports</a>)
