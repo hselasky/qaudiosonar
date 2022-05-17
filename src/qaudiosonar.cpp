@@ -139,6 +139,10 @@ main(int argc, char **argv)
 	if (qas_window_size == 0)
 		errx(EX_USAGE, "Invalid window size\n");
 
+#if defined(HAVE_MAC_AUDIO) || defined(HAVE_ASIO_AUDIO) || defined(HAVE_JACK_AUDIO)
+	hpsjam_sound_rescan();
+#endif
+
 	qas_mw = new QasMainWindow();
 
 	qas_wave_init();
