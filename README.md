@@ -5,41 +5,42 @@ Quick Audio Sonar is the software you need to tune your professional
 audio system. Unlike other audio analysis tools Quick Audio Sonar uses
 triangular waves for frequency detection.
 
-# Features
+## Features
 
 - can generate test signal and measure signal delay time
 - can analyze input audio by frequency
 - can decode tones into nearest 12-scale score
 - can be used to tune musical instruments, guitar, piano and so on.
 
-# Source code for programmers
+## Source code for programmers
 
 If you are using FreeBSD there is a port at
 /usr/ports/audio/qaudiosonar allowing you to easily install this
 program. Here is a quick howto compile the software for other systems,
 like Linux:
 
-<PRE>
+## Dependencies
+<ul>
+  <li> QT core</li>
+  <li> QT GUI</li>
+  <li> QT widgets</li>
+  <li> QT SVG renderer</li>
+  <li> <A HREF="https://jackaudio.org">JACK</A> </li>
+  <li> <A HREF="http://www.asio4all.org">ASIO</A> </li>
+</ul>
 
-1) Download software via GitHub:
-git clone https://github.com/hselasky/qaudiosonar.git
-
-2) Install Qt5.x
-3) Install JACK
-
-</PRE>
-
-# Screenshots from v1.8.0
+## Screenshots from v1.8.0
 <IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot003.png"></IMG>
 
-# Supported platforms
-- FreeBSD (<a HREF="http://www.freshports.org/audio/qaudiosonar">See Ports</a>)
-- MacOSX (<a HREF="https://apps.apple.com/us/app/quick-audio-sonar/id1473157802?mt=12">See App-Store</a>)
+## Supported platforms
+- FreeBSD (<A HREF="http://www.freshports.org/audio/qaudiosonar">See Ports</A>)
+- MacOSX (<A HREF="https://apps.apple.com/us/app/quick-audio-sonar/id1473157802?mt=12">See App-Store</A> or <A HREF="http://home.selasky.org/privat/QuickAudioSonar.dmg">Binary build here</A> (Use Safari to download))
+- Windows (64-bit) <A HREF="http://home.selasky.org/privat/qaudiosonar-binary-win64.zip">Binary build here</A>
 
-# Privacy policy
+## Privacy policy
 Quick Audio Sonar does not collect any information from its users.
 
-# Software support
+## Software support
 If you like this software, want particular improvements or have it ported
 to your platform please contact <A HREF="mailto:hps&#x40;selasky.org">hps&#x40;selasky.org</A>.
 
