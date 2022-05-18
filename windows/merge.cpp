@@ -95,7 +95,7 @@ static void insertionsort(unsigned char *, size_t, size_t, cmp_t);
  * boundaries.
  */
 /* Assumption: PSIZE is a power of 2. */
-#define EVAL(p) (unsigned char **)roundup2((uintptr_t)p, PSIZE)
+#define EVAL(p) (unsigned char **)__builtin_align_up((uintptr_t)p, PSIZE)
 
 #ifdef I_AM_MERGESORT_B
 int mergesort_b(void *, size_t, size_t, cmp_t);
@@ -128,13 +128,13 @@ mergesort(void *base, size_t nmemb, size_t size, cmp_t cmp)
 		return (0);
 
 	iflag = 0;
-	if (__is_aligned(size, ISIZE) && __is_aligned(base, ISIZE))
+	if (__builtin_is_aligned(size, ISIZE) && __builtin_is_aligned(base, ISIZE))
 		iflag = 1;
 
-	if ((list2 = malloc(nmemb * size + PSIZE)) == NULL)
+	if ((list2 = (unsigned char *)malloc(nmemb * size + PSIZE)) == NULL)
 		return (-1);
 
-	list1 = base;
+	list1 = (unsigned char *)base;
 	setup(list1, list2, nmemb, size, cmp);
 	last = list2 + nmemb * size;
 	i = big = 0;
