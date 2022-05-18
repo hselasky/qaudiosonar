@@ -189,7 +189,7 @@ qas_wave_init()
 	num_low_octave--;
 
 	if (num_high_octave < 1 || num_low_octave < 1)
-		errx(EX_USAGE, "Invalid number of octaves\n");
+		errx(1, "Invalid number of octaves\n");
 
 	qas_low_octave = num_low_octave;
 	qas_num_bands = (size_t)(num_high_octave + num_low_octave) * 12 * QAS_WAVE_STEP;

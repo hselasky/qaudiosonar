@@ -35,7 +35,6 @@
 #include <err.h>
 #include <math.h>
 #include <pthread.h>
-#include <sysexits.h>
 #include <signal.h>
 
 #include <sys/ioctl.h>

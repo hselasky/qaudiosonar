@@ -137,7 +137,7 @@ main(int argc, char **argv)
 	/* align window size */
 	qas_window_size -= (qas_window_size % QAS_CORR_SIZE);
 	if (qas_window_size == 0)
-		errx(EX_USAGE, "Invalid window size\n");
+		errx(1, "Invalid window size\n");
 
 #if defined(HAVE_MAC_AUDIO) || defined(HAVE_ASIO_AUDIO) || defined(HAVE_JACK_AUDIO)
 	qas_sound_rescan();
