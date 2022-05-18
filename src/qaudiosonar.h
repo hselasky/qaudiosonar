@@ -37,8 +37,6 @@
 #include <pthread.h>
 #include <signal.h>
 
-#include <sys/ioctl.h>
-#include <sys/filio.h>
 #include <sys/queue.h>
 
 #include <QApplication>
