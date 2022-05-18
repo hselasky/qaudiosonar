@@ -56,6 +56,16 @@ static char sccsid[] = "@(#)merge.c	8.2 (Berkeley) 2/14/94";
 #include <stdlib.h>
 #include <string.h>
 
+#if !__has_builtin(__builtin_is_aligned)
+#define __builtin_is_aligned(x, align)  \
+        (((uintptr_t)x & ((align) - 1)) == 0)
+#endif
+
+#if !__has_builtin(__builtin_align_up)
+#define __builtin_align_up(x, align)    \
+        ((typeof(x))(((uintptr_t)(x)+((align)-1))&(~((align)-1))))
+#endif
+
 #ifdef I_AM_MERGESORT_B
 #include "block_abi.h"
 #define	DECLARE_CMP	DECLARE_BLOCK(int, cmp, const void *, const void *)
