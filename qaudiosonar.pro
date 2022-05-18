@@ -43,6 +43,7 @@ win32 {
 DEFINES         -= UNICODE
 SOURCES         += \
         windows/sound_asio.cpp \
+        windows/merge.cpp \
         windows/ASIOSDK2/common/asio.cpp \
         windows/ASIOSDK2/host/asiodrivers.cpp \
         windows/ASIOSDK2/host/pc/asiolist.cpp

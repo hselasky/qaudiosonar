@@ -39,6 +39,10 @@
 
 #include <sys/queue.h>
 
+#ifdef WIN32
+#include "../windows/merge.h"
+#endif
+
 #include <QApplication>
 #include <QPushButton>
 #include <QLineEdit>
