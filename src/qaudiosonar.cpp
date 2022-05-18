@@ -96,9 +96,6 @@ main(int argc, char **argv)
 	QApplication app(argc, argv);
 	int c;
 
-        /* must be first, before any threads are created */
-        signal(SIGPIPE, SIG_IGN);
-
 	while ((c = getopt(argc, argv, "n:r:hw:")) != -1) {
 		switch (c) {
 		case 'n':
