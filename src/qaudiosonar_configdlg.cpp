@@ -170,11 +170,11 @@ QasDeviceSelection :: refreshStatus()
 	qas_sound_get_output_status(status);
 	l_output.setText(status);
 
-	s_input_left.setRange(1, qas_sound_max_input_channel());
-	s_input_right.setRange(1, qas_sound_max_input_channel());
+	QAS_NO_SIGNAL(s_input_left,setRange(1, qas_sound_max_input_channel()));
+	QAS_NO_SIGNAL(s_input_right,setRange(1, qas_sound_max_input_channel()));
 
-	s_output_left.setRange(1, qas_sound_max_output_channel());
-	s_output_right.setRange(1, qas_sound_max_output_channel());
+	QAS_NO_SIGNAL(s_output_left,setRange(1, qas_sound_max_output_channel()));
+	QAS_NO_SIGNAL(s_output_right,setRange(1, qas_sound_max_output_channel()));
 
 	ch = qas_sound_set_input_channel(0, -1);
 	if (ch < 0)
