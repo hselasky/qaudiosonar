@@ -34,8 +34,8 @@ like Linux:
 
 ## Supported platforms
 - FreeBSD (<A HREF="http://www.freshports.org/audio/qaudiosonar">See Ports</A>)
-- MacOSX (<A HREF="https://apps.apple.com/us/app/quick-audio-sonar/id1473157802?mt=12">See App-Store</A> or <A HREF="http://home.selasky.org/privat/QuickAudioSonar.dmg">Binary build here</A> (Use Safari to download))
-- Windows (64-bit) <A HREF="http://home.selasky.org/privat/qaudiosonar-binary-win64.zip">Binary build here</A>
+- MacOSX (<A HREF="https://apps.apple.com/us/app/quick-audio-sonar/id1473157802?mt=12">See App-Store</A> or <A HREF="http://www.selasky.org/downloads/QuickAudioSonar.dmg">Binary build here</A> (Use Safari to download))
+- Windows (64-bit) <A HREF="http://www.selasky.org/downloads/qaudiosonar-binary-win64.zip">Binary build here</A>
 
 ## Privacy policy
 Quick Audio Sonar does not collect any information from its users.
