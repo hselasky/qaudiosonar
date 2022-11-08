@@ -33,7 +33,6 @@ class QasBand : public QWidget {
 public:
 	enum { BAND_MAX = 12 };
 	QasBand(QasSpectrum *);
-	~QasBand() { };
 	QasSpectrum *ps;
 	QTimer *watchdog;
 
@@ -52,10 +51,8 @@ class QasGraph : public QWidget {
 	Q_OBJECT
 public:
 	QasGraph(QasSpectrum *);
-	~QasGraph();
 	QasSpectrum *ps;
 	QTimer *watchdog;
-	double *mon_index;
 
 	QString getText(QMouseEvent *);
 
@@ -67,6 +64,11 @@ public slots:
 	void handle_watchdog();
 };
 
+struct QasZoomRange {
+	size_t start;
+	size_t stop;
+};
+
 class QasSpectrum : public QWidget {
 	Q_OBJECT
 public:
@@ -76,9 +78,11 @@ public:
 		QCoreApplication::exit();
 	};
 
+	QasZoomRange zoom_range[QAS_ZOOM_MAX];
+	uint8_t zoom_level;
+
 	QGridLayout *gl;
 	QGridLayout *glb;
-	QScrollBar *sb_zoom;
 	QLabel *lbl_max;
 	QWidget *qbw;
 	QasBand *qb;
@@ -99,6 +103,10 @@ public slots:
 	void handle_tuning();
 	void handle_sensitivity();
 	void handle_decay_0(int);
+	void handle_zoom_right();
+	void handle_zoom_left();
+	void handle_zoom_middle();
+	void handle_zoom_out();
 };
 
 #endif		/* _QAS_SPECTRUM_H_ */

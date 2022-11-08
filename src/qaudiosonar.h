@@ -77,6 +77,7 @@
 #define	QAS_DSP_SIZE	((QAS_SAMPLES_MAX / 16) - ((QAS_SAMPLES_MAX / 16) % QAS_MUL_SIZE)) /* samples */
 #define	QAS_WAVE_STEP (1U << QAS_WAVE_STEP_LOG2)
 #define	QAS_WAVE_STEP_LOG2 8
+#define	QAS_ZOOM_MAX 8
 
 #define	QAS_FREQ_TABLE_ROUNDED(band) \
     ((double)(((int64_t)(1000.0 * qas_freq_table[band])) / 1000.0))

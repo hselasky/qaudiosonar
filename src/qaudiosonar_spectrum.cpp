@@ -59,17 +59,10 @@ QasGraph :: QasGraph(QasSpectrum *_ps)
 	ps = _ps;
 	watchdog = new QTimer(this);
 	connect(watchdog, SIGNAL(timeout()), this, SLOT(handle_watchdog()));
-	mon_index = new double [qas_window_size];
-	memset(mon_index, 0, sizeof(double) * qas_window_size);
 
 	setMinimumSize(256, 256);
 	setMouseTracking(1);
 	watchdog->start(500);
-}
-
-QasGraph :: ~QasGraph()
-{
-	delete mon_index;
 }
 
 QString
@@ -276,6 +269,7 @@ QasBand :: paintEvent(QPaintEvent *event)
 QString
 QasGraph :: getText(QMouseEvent *event)
 {
+	const QasZoomRange &wc_range = ps->zoom_range[ps->zoom_level];
 	int graph = (3 * event->y()) / height();
 	int band;
 	int key;
@@ -292,12 +286,13 @@ QasGraph :: getText(QMouseEvent *event)
 			return QString();
 		}
 	default:
-		for (key = 0; key != (int)qas_window_size; key++) {
-			int pos = mon_index[key] /
-			    mon_index[qas_window_size - 1] * (double)width();
-			if (pos >= event->x())
-				break;
-		}
+		key = (event->x() * (1 + wc_range.stop - wc_range.start)) / width() + wc_range.start;
+		/* range check */
+		if (key < 0)
+			key = 0;
+		else if (key > (int)(qas_window_size - 1))
+			key = (int)(qas_window_size - 1);
+
 		key = qas_window_size - 1 - key;
 		return (QString("/* %1ms %2m */")
 		    .arg((double)((int)((key * 100000ULL) / qas_sample_rate) / 100.0))
@@ -347,11 +342,14 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	size_t hi;
 	size_t hg = h / 6 + 1;
 	size_t rg = h / 3 + 1;
-	size_t wc = qas_window_size;
+	const QasZoomRange &wc_range = ps->zoom_range[ps->zoom_level];
 	double corr_max_power;
+	double corr_min_power;
+	double corr_abs_power;
 	size_t corr_max_off;
-	size_t zoom = ps->sb_zoom->value();
-	QString corr_sign;
+	size_t corr_min_off;
+	size_t corr_range_min_off;
+	size_t corr_range_max_off;
 
 	if (w == 0 || h == 0)
 		return;
@@ -371,47 +369,67 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	power.fill(transparent);
 	corr.fill(transparent);
 
-	double mon_sum = 0.0;
-	for (size_t x = 0; x != wc; x++) {
-		size_t delta = (x > zoom) ? x - zoom : zoom - x;
-		mon_index[x] = mon_sum;
-		mon_sum += pow(wc,4) - pow(delta,4);
-	}
 	atomic_graph_lock();
 	do {
-		size_t x, t;
-		for (t = x = 0; x != wc; x++) {
-			if (fabs(qas_mon_decay[x]) > fabs(qas_mon_decay[t]))
+		size_t x, t, u;
+		for (t = u = x = wc_range.start; x != wc_range.stop + 1; x++) {
+			if (qas_mon_decay[x] > qas_mon_decay[t])
 				t = x;
+			if (qas_mon_decay[x] < qas_mon_decay[u])
+				u = x;
 		}
-		corr_sign = (qas_mon_decay[t] < 0) ? "(-)" : "(+)";
-		corr_max_power = fabs(qas_mon_decay[t]);
+		corr_max_power = qas_mon_decay[t];
+		corr_min_power = qas_mon_decay[u];
+
 		if (corr_max_power < 1.0)
 			corr_max_power = 1.0;
-		corr_max_off = wc - 1 - t;
-		for (t = 0; t != wc; t++) {
-			x = mon_index[t] / mon_index[wc - 1] * (double)(w - 1);
+		if (corr_min_power > -1.0)
+			corr_min_power = -1.0;
+
+		if (corr_max_power > - corr_min_power)
+			corr_abs_power = corr_max_power;
+		else
+			corr_abs_power = - corr_min_power;
+
+		corr_max_off = qas_window_size - 1 - t;
+		corr_min_off = qas_window_size - 1 - u;
+
+		corr_range_min_off = qas_window_size - 1 - wc_range.stop;
+		corr_range_max_off = qas_window_size - 1 - wc_range.start;
+
+		for (u = 0, t = wc_range.start; t != wc_range.stop + 1; t++) {
+			x = ((t - wc_range.start) * (w - 1)) /
+			    (1 + wc_range.stop - wc_range.start);
+
+			u = ((1 + t - wc_range.start) * (w - 1)) /
+			    (1 + wc_range.stop - wc_range.start);
+
 			if (x > (size_t)(w - 1))
 				x = (size_t)(w - 1);
-			int value = (1.0 - (qas_mon_decay[t] / corr_max_power)) * (double)(hg / 2);
+			if (u > (size_t)w)
+				u = (size_t)w;
 
-			if (value < 0)
-				value = 0;
-			else if (value > (int)(hg - 1))
-				value = (int)(hg - 1);
+			for (; x != u; x++) {
+				int value = (1.0 - (qas_mon_decay[t] / corr_abs_power)) * (double)(hg / 2);
 
-			while (value < (int)(hg / 2)) {
+				if (value < 0)
+					value = 0;
+				else if (value > (int)(hg - 1))
+					value = (int)(hg - 1);
+
+				while (value < (int)(hg / 2)) {
+					if (corr.pixelColor(x, value).red() < corr_c.red())
+						corr.setPixelColor(x, value, corr_c);
+					value++;
+				}
+				while (value > (int)(hg / 2)) {
+					if (corr.pixelColor(x, value).red() < corr_c.red())
+						corr.setPixelColor(x, value, corr_c);
+					value--;
+				}
 				if (corr.pixelColor(x, value).red() < corr_c.red())
 					corr.setPixelColor(x, value, corr_c);
-				value++;
 			}
-			while (value > (int)(hg / 2)) {
-				if (corr.pixelColor(x, value).red() < corr_c.red())
-					corr.setPixelColor(x, value, corr_c);
-				value--;
-			}
-			if (corr.pixelColor(x, value).red() < corr_c.red())
-				corr.setPixelColor(x, value, corr_c);
 		}
 	} while (0);
 
@@ -494,26 +512,36 @@ QasGraph :: paintEvent(QPaintEvent *event)
 	paint.setFont(fnt);
 
 	QString str;
-	str = QString("MAX=%1dB@%2samples;%3ms;%4m    LAG=%5F")
-	   .arg(10.0 * log(corr_max_power) / log(10)).arg(corr_max_off)
+
+	str = QString("MAX :: %1dB %2 samples %3ms %4m\n"
+		      "MIN :: %5dB %6 samples %7ms %8m\n"
+		      "RANGE :: %9 samples %10 - %11ms\n"
+		      "LAG :: %12")
+	   .arg(10.0 * log(corr_max_power) / log(10))
+	   .arg(corr_max_off)
 	   .arg((double)((int)((corr_max_off * 100000ULL) / qas_sample_rate) / 100.0))
 	   .arg((double)((int)((corr_max_off * 34000ULL) / qas_sample_rate) / 100.0))
-	   .arg(qas_display_lag());
+	   .arg(10.0 * log(- corr_min_power) / log(10))
+	   .arg(corr_min_off)
+	   .arg((double)((int)((corr_min_off * 100000ULL) / qas_sample_rate) / 100.0))
+	   .arg((double)((int)((corr_min_off * 34000ULL) / qas_sample_rate) / 100.0))
+	   .arg(1 + corr_range_max_off - corr_range_min_off)
+	   .arg((double)((int)((corr_range_min_off * 100000ULL) / qas_sample_rate) / 100.0))
+	   .arg((double)((int)((corr_range_max_off * 100000ULL) / qas_sample_rate) / 100.0))
+	   .arg(qas_display_lag())
+	;
+
+	QRect br;
 
 	paint.setPen(QPen(black,0));
 	paint.setBrush(black);
-	paint.drawText(QPoint(0,16),str);
-
-	str = "POWER";
+	paint.drawText(QRect(0,0,w,h),Qt::AlignLeft | Qt::AlignTop,str,&br);
+	paint.setPen(QPen(black,-1));
+	paint.setBrush(QColor(255,255,255,128));
+	paint.drawRect(br);
 	paint.setPen(QPen(black,0));
 	paint.setBrush(black);
-	paint.drawText(QPoint(0,32),str);
-
-	str = "CORRELATION ";
-	str += corr_sign;
-	paint.setPen(QPen(corr_c,0));
-	paint.setBrush(corr_c);
-	paint.drawText(QPoint(12*16,32),str);
+	paint.drawText(QRect(0,0,w,h),Qt::AlignLeft | Qt::AlignTop,str,&br);
 
 	uint8_t iso_num = 255;
 	int last_x = 0;
@@ -557,6 +585,12 @@ QasSpectrum :: QasSpectrum()
 {
 	QPushButton *pb;
 
+	memset(zoom_range, 0, sizeof(zoom_range));
+	zoom_level = 0;
+
+	zoom_range[0].start = 0;
+	zoom_range[0].stop = qas_window_size - 1;
+
 	gl = new QGridLayout(this);
 
 	qg = new QasGraph(this);
@@ -569,22 +603,33 @@ QasSpectrum :: QasSpectrum()
 	fnt.setPixelSize(16);
 	lbl_max->setFont(fnt);
 
-	sb_zoom = new QScrollBar(Qt::Horizontal);
-	sb_zoom->setRange(0, qas_window_size - 1);
-	sb_zoom->setSingleStep(1);
-	sb_zoom->setValue(0);
-
 	pb = new QPushButton(tr("Reset"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_reset()));
 	gl->addWidget(pb, 1,0,1,1);
 
-	pb = new QPushButton(tr("Toggle freeze"));
+	pb = new QPushButton(tr("Toggle\nFreeze"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_freeze()));
 	gl->addWidget(pb, 1,1,1,1);
 
-	pb = new QPushButton(tr("Toggle record"));
+	pb = new QPushButton(tr("Toggle\nRecord"));
 	connect(pb, SIGNAL(released()), this, SLOT(handle_tog_record()));
 	gl->addWidget(pb, 1,2,1,1);
+
+	pb = new QPushButton(tr("Zoom\nLeft"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_zoom_left()));
+	gl->addWidget(pb, 1,3,1,1);
+
+	pb = new QPushButton(tr("Zoom\nMiddle"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_zoom_middle()));
+	gl->addWidget(pb, 1,4,1,1);
+
+	pb = new QPushButton(tr("Zoom\nRight"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_zoom_right()));
+	gl->addWidget(pb, 1,5,1,1);
+
+	pb = new QPushButton(tr("Zoom\nOut"));
+	connect(pb, SIGNAL(released()), this, SLOT(handle_zoom_out()));
+	gl->addWidget(pb, 1,6,1,1);
 
 	tuning = new QSpinBox();
 	tuning->setRange(-999,999);
@@ -610,12 +655,17 @@ QasSpectrum :: QasSpectrum()
 	qbw = new QWidget();
 	glb = new QGridLayout(qbw);
 
-	gl->addWidget(map_decay_0, 0,0,1,4);
-	gl->addWidget(qbw, 0,4,4,1);
-	gl->addWidget(sb_zoom, 2,0,1,4);
-	gl->addWidget(qg, 3,0,2,4);
-	gl->setRowStretch(3,2);
+	gl->addWidget(map_decay_0, 0,0,1,7);
+	gl->addWidget(qbw, 0,7,4,1);
+	gl->addWidget(qg, 2,0,2,7);
+	gl->setRowStretch(2,2);
+	gl->setColumnStretch(0,1);
+	gl->setColumnStretch(1,1);
+	gl->setColumnStretch(2,1);
 	gl->setColumnStretch(3,1);
+	gl->setColumnStretch(4,1);
+	gl->setColumnStretch(5,1);
+	gl->setColumnStretch(6,1);
 
 	glb->addWidget(lbl_max, 1,0,1,1);
 	glb->addWidget(tuning, 2,0,1,1);
@@ -633,9 +683,12 @@ QasSpectrum :: QasSpectrum()
 void
 QasSpectrum :: handle_reset()
 {
+	zoom_range[0].start = 0;
+	zoom_range[0].stop = qas_window_size - 1;
+	zoom_level = 0;
+
 	qas_dsp_sync();
 }
-
 
 void
 QasSpectrum :: handle_tuning()
@@ -672,4 +725,69 @@ QasSpectrum :: handle_tog_record()
 	atomic_lock();
 	qas_record = !qas_record;
 	atomic_unlock();
+}
+
+void
+QasSpectrum :: handle_zoom_right()
+{
+	size_t half;
+
+	if (zoom_level == QAS_ZOOM_MAX - 1) {
+		for (uint8_t x = 0; x != zoom_level; x++)
+			zoom_range[x] = zoom_range[x + 1];
+	} else {
+		zoom_level++;
+	}
+
+	half = (zoom_range[zoom_level - 1].stop - zoom_range[zoom_level - 1].start  + 1) / 2;
+
+	zoom_range[zoom_level].start = zoom_range[zoom_level - 1].start + half;
+	zoom_range[zoom_level].stop = zoom_range[zoom_level - 1].stop;
+}
+
+void
+QasSpectrum :: handle_zoom_left()
+{
+	size_t half;
+
+	if (zoom_level == QAS_ZOOM_MAX - 1) {
+		for (uint8_t x = 0; x != zoom_level; x++)
+			zoom_range[x] = zoom_range[x + 1];
+	} else {
+		zoom_level++;
+	}
+
+	half = (zoom_range[zoom_level - 1].stop - zoom_range[zoom_level - 1].start  + 1) / 2;
+
+	zoom_range[zoom_level].start = zoom_range[zoom_level - 1].start;
+	zoom_range[zoom_level].stop = zoom_range[zoom_level - 1].stop - half;
+}
+
+void
+QasSpectrum :: handle_zoom_middle()
+{
+	size_t quarter;
+
+	if (zoom_level == QAS_ZOOM_MAX - 1) {
+		for (uint8_t x = 0; x != zoom_level; x++)
+			zoom_range[x] = zoom_range[x + 1];
+	} else {
+		zoom_level++;
+	}
+
+	quarter = (zoom_range[zoom_level - 1].stop - zoom_range[zoom_level - 1].start  + 1) / 4;
+
+	zoom_range[zoom_level].start = zoom_range[zoom_level - 1].start + quarter;
+	zoom_range[zoom_level].stop = zoom_range[zoom_level - 1].stop - quarter;
+}
+
+void
+QasSpectrum :: handle_zoom_out()
+{
+	if (zoom_level == 0) {
+		zoom_range[0].start = 0;
+		zoom_range[0].stop = qas_window_size - 1;
+	} else {
+		zoom_level--;
+	}
 }
