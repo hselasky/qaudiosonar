@@ -28,7 +28,7 @@
 
 QasBandPassBox :: QasBandPassBox()
 {
-	setTitle(QString("Band pass center frequency: %1 Hz").arg(qas_sample_rate / 4));
+	setTitle(QString("Center frequency :: %1 Hz").arg(qas_sample_rate / 4));
 
 	grid = new QGridLayout(this);
 
@@ -45,13 +45,13 @@ QasBandPassBox :: QasBandPassBox()
 void
 QasBandPassBox :: handle_value_changed(int value)
 {
-	setTitle(QString("Band pass center frequency: %1 Hz").arg(value));
+	setTitle(QString("Center frequency :: %1 Hz").arg(value));
 	valueChanged(value);
 }
 
 QasBandWidthBox :: QasBandWidthBox()
 {
-	setTitle("Band width: 20 Hz");
+	setTitle("Band width :: 20 Hz");
 
 	grid = new QGridLayout(this);
 
@@ -68,13 +68,13 @@ QasBandWidthBox :: QasBandWidthBox()
 void
 QasBandWidthBox :: handle_value_changed(int value)
 {
-	setTitle(QString("Band width: %1 Hz").arg(value));
+	setTitle(QString("Band width :: %1 Hz").arg(value));
 	valueChanged(value);
 }
 
 QasNoiselevelBox :: QasNoiselevelBox()
 {
-	setTitle(QString("Noise level: %1").arg(-64));
+	setTitle(QString("Signal level :: %1dB").arg(floor(200.0*log(pow(2.0,-64/16))/log(10))/10.0));
 
 	grid = new QGridLayout(this);
 
@@ -91,7 +91,7 @@ QasNoiselevelBox :: QasNoiselevelBox()
 void
 QasNoiselevelBox :: handle_value_changed(int value)
 {
-	setTitle(QString("Noise level: %1").arg(value));
+	setTitle(QString("Signal level :: %1dB").arg(floor(200.0*log(pow(2.0,value/16.0))/log(10))/10.0));
 	valueChanged(value);
 }
 
@@ -107,10 +107,10 @@ QasSigGen :: QasSigGen()
 					"OUTPUT 0\0" "OUTPUT 1\0" "OUTPUT 0+1\0", 6, 3);
 	map_output_0 = new QasButtonMap("Output for channel 0\0"
 					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
-					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
+					"BROWN NOISE BP\0" "WHITE NOISE BP\0" "COSINUS\0", 6, 3);
 	map_output_1 = new QasButtonMap("Output for channel 1\0"
 					"SILENCE\0" "BROWN NOISE\0" "WHITE NOISE\0"
-					"BROWN NOISE BP\0" "WHITE NOISE BP\0", 5, 3);
+					"BROWN NOISE BP\0" "WHITE NOISE BP\0" "COSINUS\0", 6, 3);
 
 	bp_box_0 = new QasBandPassBox();
 	bw_box_0 = new QasBandWidthBox();
@@ -133,7 +133,8 @@ QasSigGen :: QasSigGen()
 	gl->addWidget(bw_box_0, 1,1,1,1);
 	gl->addWidget(nl_box_0, 2,1,1,1);
 	gl->setRowStretch(4,1);
-	gl->setColumnStretch(2,1);
+	gl->setColumnStretch(0,1);
+	gl->setColumnStretch(1,1);
 }
 
 void
@@ -215,6 +216,7 @@ QasSigGen :: handle_filter_0(int value)
 	for (size_t x = 0; x != QAS_CORR_SIZE; x++)
 		qas_band_pass_filter[x] = temp[x];
 	qas_noise_level = pow(2.0, noiseLevel / 16.0);
+	qas_phase_step = 2.0 * M_PI * center / qas_sample_rate;
 	atomic_unlock();
 }
 

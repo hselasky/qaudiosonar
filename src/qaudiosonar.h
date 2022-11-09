@@ -115,6 +115,8 @@ extern int qas_output_1;
 extern int qas_freeze;
 extern int qas_record;
 extern int qas_sensitivity;
+extern double qas_phase_curr;
+extern double qas_phase_step;
 extern double qas_view_decay;
 extern QasMainWindow *qas_mw;
 extern double qas_low_octave;

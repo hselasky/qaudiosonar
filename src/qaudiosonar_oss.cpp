@@ -38,6 +38,8 @@ int	qas_record;
 double qas_band_pass_filter[QAS_CORR_SIZE];
 double qas_noise_level = 1.0;
 double qas_view_decay = 0;
+double qas_phase_curr;
+double qas_phase_step;
 size_t qas_mon_size;
 
 static struct dsp_buffer qas_read_buffer[2];
@@ -109,7 +111,7 @@ dsp_monitor_space(struct dsp_buffer *dbuf)
 static int32_t
 qas_brown_noise(void)
 {
-	uint32_t temp;
+	int32_t temp;
 	static uint32_t noise_rem = 1;
 	const uint32_t prime = 0xFFFF1D;
 
@@ -131,7 +133,7 @@ qas_brown_noise(void)
 static int32_t
 qas_white_noise(void)
 {
-	uint32_t temp;
+	int32_t temp;
 	static uint32_t noise_rem;
 
 	/* NOTE: White-noise formula used by ZynaddSubFX */
@@ -151,9 +153,10 @@ qas_white_noise(void)
 static void *
 qas_dsp_audio_producer(void *arg)
 {
-	static double buffer[5][QAS_DSP_SIZE];
 	static double noise[2][QAS_DSP_SIZE];
+	static double cosinus[QAS_DSP_SIZE];
 	static double temp[2][QAS_CORR_SIZE + QAS_DSP_SIZE];
+	double buffer[6] = {};
 
 	atomic_lock();
 	while (1) {
@@ -166,6 +169,13 @@ qas_dsp_audio_producer(void *arg)
 			/* generate noise */
 			noise[0][x] = qas_brown_noise();
 			noise[1][x] = qas_white_noise();
+			/* generate cosinus */
+			qas_phase_curr += qas_phase_step;
+			if (qas_phase_curr >= 2.0 * M_PI)
+				qas_phase_curr -= 2.0 * M_PI;
+			/* avoid computing cosinus when not needed */
+			if (qas_output_0 == 5 || qas_output_1 == 5)
+				cosinus[x] = qas_noise_level * cos(qas_phase_curr) * (1 << 24);
 		}
 
 		for (size_t x = 0; x != QAS_CORR_SIZE; x++) {
@@ -187,13 +197,14 @@ qas_dsp_audio_producer(void *arg)
 
 		atomic_lock();
 		for (size_t x = 0; x != QAS_DSP_SIZE; x++) {
-			buffer[1][x] = noise[0][x];
-			buffer[2][x] = noise[1][x];
-			buffer[3][x] = temp[0][x];
-			buffer[4][x] = temp[1][x];
+			buffer[1] = noise[0][x];
+			buffer[2] = noise[1][x];
+			buffer[3] = temp[0][x];
+			buffer[4] = temp[1][x];
+			buffer[5] = cosinus[x];
 
-			dsp_put_sample(&qas_write_buffer[0], buffer[qas_output_0][x]);
-			dsp_put_sample(&qas_write_buffer[1], buffer[qas_output_1][x]);
+			dsp_put_sample(&qas_write_buffer[0], buffer[qas_output_0]);
+			dsp_put_sample(&qas_write_buffer[1], buffer[qas_output_1]);
 		}
 		atomic_wakeup();
 	}
