@@ -63,7 +63,7 @@
 #include <QStackedWidget>
 #include <QMessageBox>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.0"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.1"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
 #define	QAS_SAMPLE_RATE 48000	/* Hz */
