@@ -32,7 +32,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <errno.h>
-#include <err.h>
 #include <math.h>
 #include <pthread.h>
 #include <signal.h>
@@ -62,6 +61,8 @@
 #include <QSlider>
 #include <QStackedWidget>
 #include <QMessageBox>
+
+#include <err.h>
 
 #define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.1"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
