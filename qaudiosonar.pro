@@ -81,20 +81,16 @@ TARGET          = qaudiosonar
 LIBS            += -lpthread -lm
 
 macx {
-icons.path= $${DESTDIR}/Contents/Resources
-icons.files= qaudiosonar.icns
-QMAKE_BUNDLE_DATA+= icons
-QMAKE_INFO_PLIST= qaudiosonar_osx.plist
-OTHER_FILES+= qaudiosonar.entitlements
+QMAKE_ASSET_CATALOGS += mac/Assets.xcassets
+QMAKE_INFO_PLIST= mac/qaudiosonar.plist
+OTHER_FILES += mac/qaudiosonar.entitlements
 }
 
 ios {
-icons.path	= $${PREFIX}
-icons.files	= qaudiosonar_144x144.png qaudiosonar_152x152.png qaudiosonar_72x72.png qaudiosonar_76x76.png
-QMAKE_BUNDLE_DATA += icons
-QMAKE_INFO_PLIST= qaudiosonar_ios.plist
-QMAKE_APPLE_DEVICE_ARCHS= armv7 arm64
-QMAKE_IOS_DEPLOYMENT_TARGET= 9.2
+QMAKE_ASSET_CATALOGS += mac/Assets.xcassets
+QMAKE_INFO_PLIST= ios/qaudiosonar.plist
+QMAKE_APPLE_DEVICE_ARCHS= arm64
+QMAKE_IOS_DEPLOYMENT_TARGET= 13.0
 }
 
 android {
