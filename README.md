@@ -1,5 +1,5 @@
 <IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/qaudiosonar_128x128.png"></IMG>
-# Quick Audio Sonar v1.8.1
+# Quick Audio Sonar v1.8.2
 
 Quick Audio Sonar is the software you need to tune your professional
 audio system. Unlike other audio analysis tools Quick Audio Sonar uses
@@ -29,7 +29,7 @@ like Linux:
   <li> <A HREF="http://www.asio4all.org">ASIO</A> </li>
 </ul>
 
-## Screenshots from v1.8.1
+## Screenshots from v1.8.2
 <IMG SRC="https://raw.githubusercontent.com/hselasky/qaudiosonar/main/www/screenshot003.png"></IMG>
 
 ## Supported platforms

@@ -6,18 +6,16 @@
 	<string>QuickAudioSonar</string>
 	<key>CFBundleGetInfoString</key>
 	<string>Created by Qt/QMake</string>
-	<key>CFBundleIconFile</key>
-	<string>qaudiosonar</string>
 	<key>CFBundleIdentifier</key>
 	<string>org.selasky.osx.qaudiosonar</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>1.8.1</string>
+	<string>1.8.2</string>
 	<key>CFBundleSignature</key>
 	<string></string>
 	<key>CFBundleVersion</key>
-	<string>1.8.1</string>
+	<string>1.8.2</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.education</string>
 	<key>LSMinimumSystemVersion</key>
