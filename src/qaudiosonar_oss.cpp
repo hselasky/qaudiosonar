@@ -158,6 +158,8 @@ qas_dsp_audio_producer(void *arg)
 	static double temp[2][QAS_CORR_SIZE + QAS_DSP_SIZE];
 	double buffer[6] = {};
 
+	QThread::currentThread()->setPriority(QThread::HighPriority);
+
 	atomic_lock();
 	while (1) {
 		while (dsp_write_monitor_space(&qas_write_buffer[0]) < QAS_DSP_SIZE ||
@@ -236,6 +238,8 @@ qas_dsp_audio_analyzer(void *arg)
 	double *dsp_rd_monitor;
 	static double dsp_rd_data[6][QAS_CORR_SIZE];
 
+	QThread::currentThread()->setPriority(QThread::HighPriority);
+
 	while (1) {
 		atomic_lock();
 		do {
@@ -301,11 +305,17 @@ qas_sound_process(float *pl, float *pr, size_t num)
 	static float output_l[QAS_SAMPLE_RATE / 8000];
 	static float output_r[QAS_SAMPLE_RATE / 8000];
 	static uint8_t remainder;
+	static bool priority;
 	const uint8_t factor = QAS_SAMPLE_RATE / qas_sample_rate;
+
+	if (priority == false) {
+		QThread::currentThread()->setPriority(QThread::HighPriority);
+		priority = true;
+	}
 
 	atomic_lock();
 
-	while (num-- != 0) {
+	while (num != 0) {
 		if (remainder < factor) {
 			input_l[remainder] = *pl;
 			*pl = output_l[remainder];
@@ -314,6 +324,7 @@ qas_sound_process(float *pl, float *pr, size_t num)
 			*pr = output_r[remainder];
 			pr++;
 			remainder++;
+			num--;
 		}
 
 		if (remainder == factor) {
