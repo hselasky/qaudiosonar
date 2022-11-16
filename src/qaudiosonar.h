@@ -64,7 +64,7 @@
 
 #include <err.h>
 
-#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.2"
+#define	QAS_WINDOW_TITLE	"Quick Audio Sonar v1.8.3"
 #define	QAS_WINDOW_ICON		":/qaudiosonar.png"
 
 #define	QAS_SAMPLE_RATE 48000	/* Hz */
