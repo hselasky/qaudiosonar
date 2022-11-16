@@ -165,7 +165,8 @@ qas_audio_callback(AudioDeviceID deviceID,
 		    audioBufferSamples * audioOutputChannels * sizeof(float);
 	}
 
-	if (n_in > 1 || n_out > 1 || (n_in == 0 && n_out == 0) ||
+	/* sanity checks */
+	if ((n_in == 0 && n_out == 0) ||
 	    audioInputBuffer[0] == 0 || audioInputBuffer[1] == 0 ||
 	    audioInputBuffer[2] == 0 || audioInputBuffer[3] == 0 ||
 	    audioInputBuffer[4] == 0)
@@ -182,6 +183,26 @@ qas_audio_callback(AudioDeviceID deviceID,
 			for (uint32_t x = 0; x != audioBufferSamples; x++) {
 				audioInputBuffer[map[ch]][x] = ((float *)inData->mBuffers[0].mData)
 				    [x * audioInputChannels + audioInputSelection[ch]];
+			}
+		}
+
+		qas_sound_process(audioInputBuffer[map[0]],
+		    audioInputBuffer[map[1]], audioBufferSamples);
+
+		/* Move MIDI data, if any */
+		qas_midi_write_event();
+
+		audioInputCount++;
+	} else if (n_in == audioInputChannels && deviceID == audioInputDevice) {
+		const unsigned map[2] = {
+		    (audioInputCount & 1) ? 0U : 3U,
+		    (audioInputCount & 1) ? 1U : 4U
+		};
+
+		for (unsigned ch = 0; ch != 2; ch++) {
+			for (uint32_t x = 0; x != audioBufferSamples; x++) {
+				audioInputBuffer[map[ch]][x] =
+				    ((float *)inData->mBuffers[audioInputSelection[ch]].mData)[x];
 			}
 		}
 
